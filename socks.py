@@ -75,6 +75,7 @@ PROXY_TYPES = {
   'default': PROXY_TYPE_DEFAULT,
   'none': PROXY_TYPE_NONE,
   'socks4': PROXY_TYPE_SOCKS4,
+  'socks4a': PROXY_TYPE_SOCKS4,
   'socks5': PROXY_TYPE_SOCKS5,
   'socks': PROXY_TYPE_SOCKS5,
   'http': PROXY_TYPE_HTTP,
@@ -155,6 +156,22 @@ def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
     else:
         _proxyroutes[dest.lower()] = [proxy]
     if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
+
+def usesystemdefaults():
+    import os
+
+    no_proxy = ['localhost', 'localhost.localdomain', '127.0.0.1']
+    no_proxy.extend(os.environ.get('no_PROXY',
+                                   os.environ.get('NO_PROXY',
+                                                  '')).split(','))
+    for host in no_proxy:
+        setdefaultproxy(PROXY_TYPE_NONE, dest=host)
+
+    for var in ('ALL_PROXY', 'HTTPS_PROXY', 'http_proxy'):
+        val = os.environ.get(var.lower(), os.environ.get(var, None))
+        if val:
+            setdefaultproxy(*parseproxy(val.replace('/', '')))
+            return
 
 def sockcreateconn(*args, **kwargs):
     _thread_locals.create_conn = args[0]
@@ -433,6 +450,11 @@ class socksocket(socket.socket):
         self.__sock.do_handshake()
         if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport, self.__sock)
 
+    def __default_route(self, destpair):
+        return _proxyroutes.get(str(destpair[0]).lower(),
+                                _proxyroutes.get(DEFAULT_ROUTE,
+                                                 None)) or []
+
     def connect(self, destpair):
         """connect(self, despair)
         Connects to the specified destination through a chain of proxies.
@@ -448,12 +470,7 @@ class socksocket(socket.socket):
             (type(destpair[1]) != int)):
             raise GeneralProxyError((5, _generalerrors[5]))
 
-        proxy_chain = self.__proxy
-        if proxy_chain is None:
-            proxy_chain = _proxyroutes.get(str(destpair[0]).lower(),
-                                           _proxyroutes.get(DEFAULT_ROUTE,
-                                                            None)) or []
-
+        proxy_chain = self.__proxy or self.__default_route(destpair)
         for proxy in proxy_chain:
             if (proxy[P_TYPE] or PROXY_TYPE_NONE) not in PROXY_DEFAULTS:
                 raise GeneralProxyError((4, _generalerrors[4]))
@@ -466,9 +483,11 @@ class socksocket(socket.socket):
         result = None
         while chain:
             proxy = chain.pop(0)
+
             if proxy[P_TYPE] == PROXY_TYPE_DEFAULT:
-              chain[0:0] = _proxyroutes.get(DEFAULT_ROUTE, [])
-              continue
+                chain[0:0] = self.__default_route(destpair) or []
+                if DEBUG: print '*** Chain: %s' % chain
+                continue
 
             if proxy[P_PORT] != None:
                 portnum = proxy[P_PORT]
@@ -551,8 +570,8 @@ def __make_proxy_chain(args):
         chain.append(parseproxy(arg))
     return chain
 
-
 if __name__ == "__main__":
+    usesystemdefaults()
     try:
         args = sys.argv[1:]
         if '--debug' in args:
