@@ -489,6 +489,7 @@ class socksocket(socket.socket):
                 elif proxy[P_TYPE] != PROXY_TYPE_NONE or not first:
                     raise GeneralProxyError((4, _generalerrors[4]))
 
+        if DEBUG: print '*** Connected!'
         return result
 
 def wrapmodule(module):
