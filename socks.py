@@ -59,8 +59,10 @@ PROXY_TYPE_HTTP = 3
 PROXY_TYPE_SSL = 4
 PROXY_TYPE_SSL_WEAK = 5
 PROXY_TYPE_SSL_ANON = 6
+PROXY_TYPE_TOR = 7
 
 PROXY_SSL_TYPES = (PROXY_TYPE_SSL, PROXY_TYPE_SSL_WEAK, PROXY_TYPE_SSL_ANON)
+PROXY_SOCKS5_TYPES = (PROXY_TYPE_SOCKS5, PROXY_TYPE_TOR)
 PROXY_DEFAULTS = {
     PROXY_TYPE_NONE: 0,
     PROXY_TYPE_DEFAULT: 0,
@@ -70,6 +72,7 @@ PROXY_DEFAULTS = {
     PROXY_TYPE_SSL: 443,
     PROXY_TYPE_SSL_WEAK: 443,
     PROXY_TYPE_SSL_ANON: 443,
+    PROXY_TYPE_TOR: 9050,
 }
 PROXY_TYPES = {
   'defaults': PROXY_TYPE_DEFAULT,
@@ -83,6 +86,7 @@ PROXY_TYPES = {
   'ssl': PROXY_TYPE_SSL,
   'ssl-weak': PROXY_TYPE_SSL_WEAK,
   'ssl-anon': PROXY_TYPE_SSL_ANON,
+  'tor': PROXY_TYPE_TOR,
 }
 
 P_TYPE = 0
@@ -137,8 +141,27 @@ _socks4errors = ("request granted",
 
 
 def parseproxy(arg):
-    args = arg.split(':')
-    args[0] = PROXY_TYPES.get(args[0], PROXY_TYPE_HTTP)
+    # This silly function will do a quick-and-dirty parse of our argument
+    # into a proxy specification array. It lets people omit stuff.
+    args = arg.replace('/', '').split(':')
+    args[0] = PROXY_TYPES[args[0] or 'http']
+
+    if (len(args) in (3, 4, 5)) and ('@' in args[2]):
+        # Re-order http://user:pass@host:port/ => http:host:port:user:pass
+        pwd, host = args[2].split('@')
+        user = args[1]
+        args[1:3] = [host]
+        if len(args) == 2: args.append(PROXY_DEFAULTS[args[0]])
+        if len(args) == 3: args.append(False)
+        args.extend([user, pwd])
+    elif (len(args) in (2, 3, 4)) and ('@' in args[1]):
+        user, host = args[1].split('@')
+        args[1] = host
+        if len(args) == 2: args.append(PROXY_DEFAULTS[args[0]])
+        if len(args) == 3: args.append(False)
+        args.append(user)
+
+    if len(args) == 2: args.append(PROXY_DEFAULTS[args[0]])
     if len(args) > 2: args[2] = int(args[2])
     return args
 
@@ -174,7 +197,7 @@ def usesystemdefaults():
     for var in ('ALL_PROXY', 'HTTPS_PROXY', 'http_proxy'):
         val = os.environ.get(var.lower(), os.environ.get(var, None))
         if val:
-            setdefaultproxy(*parseproxy(val.replace('/', '')))
+            setdefaultproxy(*parseproxy(val))
             return
 
 def sockcreateconn(*args, **kwargs):
@@ -513,7 +536,7 @@ class socksocket(socket.socket):
             if chain:
                 nexthop = (chain[0][1], chain[0][2])
                 if DEBUG: print '*** Negotiating: %s' % (nexthop, )
-                if proxy[P_TYPE] == PROXY_TYPE_SOCKS5:
+                if proxy[P_TYPE] in PROXY_SOCKS5_TYPES:
                     self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
                 elif proxy[P_TYPE] == PROXY_TYPE_SOCKS4:
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
