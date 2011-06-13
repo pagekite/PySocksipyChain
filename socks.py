@@ -421,6 +421,7 @@ class socksocket(socket.socket):
         if DEBUG: print '*** Chain: %s' % chain
 
         first = True
+        result = None
         while chain:
             proxy = chain.pop(0)
             if proxy[P_PORT] != None:
@@ -430,7 +431,7 @@ class socksocket(socket.socket):
 
             if first:
                 if DEBUG: print '*** Connect: %s:%s' % (proxy[P_HOST], portnum)
-                _orgsocket.connect(self, (proxy[P_HOST], portnum))
+                result = _orgsocket.connect(self, (proxy[P_HOST], portnum))
                 first = False
 
             if chain:
@@ -445,6 +446,7 @@ class socksocket(socket.socket):
                 else:
                     raise GeneralProxyError((4, _generalerrors[4]))
 
+        return result
 
 ## Netcat-like proxy-chaining tools follow ##
 
