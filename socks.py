@@ -72,6 +72,7 @@ PROXY_DEFAULTS = {
     PROXY_TYPE_SSL_ANON: 443,
 }
 PROXY_TYPES = {
+  'defaults': PROXY_TYPE_DEFAULT,
   'default': PROXY_TYPE_DEFAULT,
   'none': PROXY_TYPE_NONE,
   'socks4': PROXY_TYPE_SOCKS4,
@@ -151,8 +152,11 @@ def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
     global _proxyroutes
     route = _proxyroutes.get(dest.lower(), None)
     proxy = (proxytype, addr, port, rdns, username, password)
-    if append and route:
+    if append:
+        if not route:
+          route = _proxyroutes.get(DEFAULT_ROUTE, [])[:]
         route.append(proxy)
+        _proxyroutes[dest.lower()] = route
     else:
         _proxyroutes[dest.lower()] = [proxy]
     if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
@@ -239,10 +243,11 @@ class socksocket(socket.socket):
                 Only relevant when username is also provided.
         append -      Append this proxy to the chain.
         """
+        proxy = (proxytype, addr, port, rdns, username, password)
         if append and self.__proxy:
-            self.__proxy.append((proxytype, addr, port, rdns, username, password))
+            self.__proxy.append(proxy)
         else:
-            self.__proxy = [(proxytype, addr, port, rdns, username, password)]
+            self.__proxy = [proxy]
 
     def __negotiatesocks5(self, destaddr, destport, proxy):
         """__negotiatesocks5(self, destaddr, destport, proxy)
@@ -450,8 +455,8 @@ class socksocket(socket.socket):
         self.__sock.do_handshake()
         if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport, self.__sock)
 
-    def __default_route(self, destpair):
-        return _proxyroutes.get(str(destpair[0]).lower(),
+    def __default_route(self, dest):
+        return _proxyroutes.get(str(dest).lower(),
                                 _proxyroutes.get(DEFAULT_ROUTE,
                                                  None)) or []
 
@@ -470,7 +475,13 @@ class socksocket(socket.socket):
             (type(destpair[1]) != int)):
             raise GeneralProxyError((5, _generalerrors[5]))
 
-        proxy_chain = self.__proxy or self.__default_route(destpair)
+        if self.__proxy:
+            proxy_chain = self.__proxy
+            default_dest = destpair[0]
+        else:
+            proxy_chain = self.__default_route(destpair[0])
+            default_dest = DEFAULT_ROUTE
+
         for proxy in proxy_chain:
             if (proxy[P_TYPE] or PROXY_TYPE_NONE) not in PROXY_DEFAULTS:
                 raise GeneralProxyError((4, _generalerrors[4]))
@@ -485,7 +496,7 @@ class socksocket(socket.socket):
             proxy = chain.pop(0)
 
             if proxy[P_TYPE] == PROXY_TYPE_DEFAULT:
-                chain[0:0] = self.__default_route(destpair) or []
+                chain[0:0] = self.__default_route(default_dest)
                 if DEBUG: print '*** Chain: %s' % chain
                 continue
 
