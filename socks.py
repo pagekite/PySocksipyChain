@@ -46,7 +46,7 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import os, fcntl, socket, sys, select, struct
+import os, fcntl, socket, sys, select, struct, threading
 import ssl
 
 DEBUG = False
@@ -90,6 +90,8 @@ P_PASS = 5
 DEFAULT_ROUTE = '*'
 _proxyroutes = { }
 _orgsocket = socket.socket
+_orgcreateconn = socket.create_connection
+_thread_locals = threading.local()
 
 class ProxyError(Exception): pass
 class GeneralProxyError(ProxyError): pass
@@ -151,13 +153,11 @@ def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
         _proxyroutes[dest.lower()] = [proxy]
     if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
 
-def wrapmodule(module):
-    """wrapmodule(module)
-    Attempts to replace a module's socket library with a SOCKS socket.
-    This will only work on modules that import socket directly into the namespace;
-    most of the Python Standard Library falls into this category.
-    """
-    module.socket.socket = socksocket
+def sockcreateconn(*args, **kwargs):
+    _thread_locals.create_conn = args[0]
+    rv = _orgcreateconn(*args, **kwargs)
+    _thread_locals.create_conn = None
+    return rv
 
 class socksocket(socket.socket):
     """socksocket([family[, type[, proto]]]) -> socket object
@@ -426,6 +426,7 @@ class socksocket(socket.socket):
         """__negotiatehttp(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
+        if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport, self.__sock)
         self.__sock = ssl.wrap_socket(self.__sock)
         self.__sock.do_handshake()
 
@@ -436,6 +437,8 @@ class socksocket(socket.socket):
         (identical to socket's connect).
         To select the proxy servers use setproxy() and chainproxy().
         """
+        destpair = getattr(_thread_locals, 'create_conn', destpair)
+
         # Do a minimal input check first
         if ((not type(destpair) in (list, tuple)) or
             (len(destpair) < 2) or (type(destpair[0]) != type('')) or
@@ -487,6 +490,16 @@ class socksocket(socket.socket):
                     raise GeneralProxyError((4, _generalerrors[4]))
 
         return result
+
+def wrapmodule(module):
+    """wrapmodule(module)
+    Attempts to replace a module's socket library with a SOCKS socket.
+    This will only work on modules that import socket directly into the
+    namespace; most of the Python Standard Library falls into this category.
+    """
+    module.socket.socket = socksocket
+    module.socket.create_connection = sockcreateconn
+
 
 ## Netcat-like proxy-chaining tools follow ##
 
