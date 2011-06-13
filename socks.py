@@ -68,6 +68,7 @@ PROXY_TYPES = {
   'socks5': PROXY_TYPE_SOCKS5,
   'socks': PROXY_TYPE_SOCKS5,
   'http': PROXY_TYPE_HTTP,
+  'none': PROXY_TYPE_NONE,
 }
 
 P_TYPE = 0
@@ -78,7 +79,7 @@ P_USER = 4
 P_PASS = 5
 
 DEFAULT_ROUTE = '*'
-_proxyroutes = { DEFAULT_ROUTE: None }
+_proxyroutes = { }
 _orgsocket = socket.socket
 
 class ProxyError(Exception): pass
@@ -139,6 +140,7 @@ def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
         route.append(proxy)
     else:
         _proxyroutes[dest.lower()] = [proxy]
+    if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
 
 def wrapmodule(module):
     """wrapmodule(module)
@@ -406,16 +408,17 @@ class socksocket(socket.socket):
             (type(destpair[1]) != int)):
             raise GeneralProxyError((5, _generalerrors[5]))
 
-        if not self.__proxy:
-            self.__proxy = _proxyroutes.get(str(destpair[0]),
-                                            _proxyroutes.get(DEFAULT_ROUTE,
-                                                             None)) or []
+        proxy_chain = self.__proxy
+        if proxy_chain is None:
+            proxy_chain = _proxyroutes.get(str(destpair[0]).lower(),
+                                           _proxyroutes.get(DEFAULT_ROUTE,
+                                                            None)) or []
 
-        for proxy in self.__proxy:
+        for proxy in proxy_chain:
             if (proxy[P_TYPE] or PROXY_TYPE_NONE) not in PROXY_DEFAULTS:
                 raise GeneralProxyError((4, _generalerrors[4]))
 
-        chain = self.__proxy[:]
+        chain = proxy_chain[:]
         chain.append([PROXY_TYPE_NONE, destpair[0], destpair[1]])
         if DEBUG: print '*** Chain: %s' % chain
 
@@ -428,7 +431,7 @@ class socksocket(socket.socket):
             else:
                 portnum = PROXY_DEFAULTS[proxy[P_TYPE] or PROXY_TYPE_NONE]
 
-            if first:
+            if first and proxy[P_HOST]:
                 if DEBUG: print '*** Connect: %s:%s' % (proxy[P_HOST], portnum)
                 result = _orgsocket.connect(self, (proxy[P_HOST], portnum))
                 first = False
@@ -442,7 +445,7 @@ class socksocket(socket.socket):
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
                 elif proxy[P_TYPE] == PROXY_TYPE_HTTP:
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
-                else:
+                elif proxy[P_TYPE] != PROXY_TYPE_NONE or not first:
                     raise GeneralProxyError((4, _generalerrors[4]))
 
         return result
