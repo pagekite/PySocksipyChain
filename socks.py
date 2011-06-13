@@ -118,6 +118,13 @@ _socks4errors = ("request granted",
     "request rejected because the client program and identd report different user-ids",
     "unknown error")
 
+
+def parseproxy(arg):
+    args = arg.split(':')
+    args[0] = PROXY_TYPES.get(args[0], PROXY_TYPE_HTTP)
+    if len(args) > 2: args[2] = int(args[2])
+    return args
+
 def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
                     username=None, password=None,
                     append=False, dest=DEFAULT_ROUTE):
@@ -478,10 +485,7 @@ def __proxy_connect_netcat(hostname, port, chain):
 def __make_proxy_chain(args):
     chain = []
     for arg in args:
-        a = arg.split(':')
-        a[0] = PROXY_TYPES.get(a[0], PROXY_TYPE_HTTP)
-        if len(a) > 2: a[2] = int(a[2])
-        chain.append(a)
+        chain.append(parseproxy(arg))
     return chain
 
 
