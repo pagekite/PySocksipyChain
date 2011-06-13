@@ -1,6 +1,8 @@
+#!/usr/bin/python
 """SocksiPy - Python SOCKS module.
-Version 1.00
+Version 1.03
 
+Copyright 2011 Bjarni R. Einarsson. All rights reserved.
 Copyright 2006 Dan-Haim. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -13,7 +15,7 @@ are permitted provided that the following conditions are met:
 3. Neither the name of Dan Haim nor the names of his contributors may be used
    to endorse or promote products derived from this software without specific
    prior written permission.
-   
+
 THIS SOFTWARE IS PROVIDED BY DAN HAIM "AS IS" AND ANY EXPRESS OR IMPLIED
 WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
@@ -32,6 +34,10 @@ for tunneling connections through SOCKS proxies.
 
 """
 
+Refactored to allow proxy chaining and use as a command-line netcat-like
+tool by Bjarni R. Einarsson (http://bre.klaki.net/) for use with PageKite
+(http://pagekite.net/).
+
 Minor modifications made by Christopher Gilbert (http://motomastyle.com/)
 for use in PyLoris (http://pyloris.sourceforge.net/)
 
@@ -40,9 +46,8 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import socket
-import struct
-import sys
+import os, fcntl, socket, sys, select, struct
+
 
 PROXY_TYPE_NONE = 0
 PROXY_TYPE_SOCKS4 = 1
@@ -56,6 +61,13 @@ PROXY_DEFAULTS = {
     PROXY_TYPE_SOCKS5: 1080,
     PROXY_TYPE_HTTP: 8080,
 }
+PROXY_TYPES = {
+  'socks4': PROXY_TYPE_SOCKS4,
+  'socks5': PROXY_TYPE_SOCKS5,
+  'socks': PROXY_TYPE_SOCKS5,
+  'http': PROXY_TYPE_HTTP,
+}
+
 
 _defaultproxy = None
 _orgsocket = socket.socket
@@ -129,7 +141,7 @@ class socksocket(socket.socket):
         if _defaultproxy != None:
             self.__proxy = _defaultproxy[:]
         else:
-            self.__proxy = [(None, None, None, None, None, None)]
+            self.__proxy = []
         self.__proxysockname = None
         self.__proxypeername = None
 
@@ -392,23 +404,19 @@ class socksocket(socket.socket):
         chain.append([PROXY_TYPE_NONE, destpair[0], destpair[1]])
 
         first = True
-        while len(chain) > 1:
+        while chain:
             proxy = chain.pop(0)
             if proxy[2] != None:
                 portnum = proxy[2]
             else:
                 portnum = PROXY_DEFAULTS[proxy[0] or PROXY_TYPE_NONE]
 
-            # Destination is next proxy
-            nexthop = (chain[0][1], chain[0][2])
+            if first:
+                _orgsocket.connect(self, (proxy[1], portnum))
+                first = False
 
-            if proxy[0] == None:
-                _orgsocket.connect(self, (nexthop[0], nexthop[1]))
-            else:
-                if first:
-                    _orgsocket.connect(self, (proxy[1], portnum))
-                    first = False
-
+            if chain:
+                nexthop = (chain[0][1], chain[0][2])
                 if proxy[0] == PROXY_TYPE_SOCKS5:
                     self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
                 elif proxy[0] == PROXY_TYPE_SOCKS4:
@@ -417,4 +425,70 @@ class socksocket(socket.socket):
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
                 elif proxy[0] == None:
                     _orgsocket.connect(self, (nexthop[0], nexthop[1]))
+
+
+## Netcat-like proxy-chaining tools follow ##
+
+def __unblock(f):
+    fd = f.fileno()
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+def netcat(s, i, o):
+    __unblock(s)
+    __unblock(i)
+    while True:
+        in_r, out_r, err_r = select.select([s, i], [s, o], [s, i, o], 10)
+        if s in in_r:
+            data = s.recv(4096)
+            if data == "": break
+            o.write(data)
+        if i in in_r:
+            data = os.read(i.fileno(), 4096)
+            if data == "":
+                s.shutdown(socket.SHUT_WR)
+            else:
+                s.sendall(data)
+    s.close()
+
+def __proxy_connect_netcat(hostname, port, chain):
+    try:
+        s = socksocket(socket.AF_INET, socket.SOCK_STREAM)
+        for proxy in chain:
+            s.chainproxy(*proxy)
+        s.connect((hostname, port))
+    except Exception, e:
+        sys.stderr.write('Error: %s\n' % e)
+        return False
+    netcat(s, sys.stdin, sys.stdout)
+    return True
+
+def __make_proxy_chain(args):
+    chain = []
+    for arg in args:
+        a = arg.split(':')
+        a[0] = PROXY_TYPES.get(a[0], PROXY_TYPE_HTTP)
+        if len(a) > 2: a[2] = int(a[2])
+        chain.append(a)
+    return chain
+
+
+if __name__ == "__main__":
+    try:
+        args = sys.argv[1:]
+        dest_host, dest_port = args.pop().split(':', 1)
+        dest_port = int(dest_port)
+        chain = __make_proxy_chain(args)
+    except Exception, e:
+        print 'Error: %s' % e
+        sys.stderr.write(('Usage: %s '
+                          '[<proto1:proxy1:port1> [<proto2:proxy2:port2> ...]] '
+                          '<host:port>\n') % sys.argv[0])
+        sys.exit(1)
+
+    try:
+        if not __proxy_connect_netcat(dest_host, dest_port, chain):
+            sys.exit(2)
+    except KeyboardInterrupt:
+        sys.exit(0)
 
