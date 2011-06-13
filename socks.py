@@ -68,6 +68,12 @@ PROXY_TYPES = {
   'http': PROXY_TYPE_HTTP,
 }
 
+P_TYPE = 0
+P_HOST = 1
+P_PORT = 2
+P_RDNS = 3
+P_USER = 4
+P_PASS = 5
 
 _defaultproxy = None
 _orgsocket = socket.socket
@@ -188,7 +194,7 @@ class socksocket(socket.socket):
         Negotiates a connection through a SOCKS5 server.
         """
         # First we'll send the authentication packages we support.
-        if (proxy[4]!=None) and (proxy[5]!=None):
+        if (proxy[P_USER]!=None) and (proxy[P_PASS]!=None):
             # The username/password details were supplied to the
             # setproxy method so we support the USERNAME/PASSWORD
             # authentication (in addition to the standard none).
@@ -210,7 +216,9 @@ class socksocket(socket.socket):
         elif chosenauth[1:2] == chr(0x02).encode():
             # Okay, we need to perform a basic username/password
             # authentication.
-            self.sendall(chr(0x01).encode() + chr(len(proxy[4])) + proxy[4] + chr(len(proxy[5])) + proxy[5])
+            self.sendall(chr(0x01).encode() +
+                         chr(len(proxy[P_USER])) + proxy[P_USER] +
+                         chr(len(proxy[P_PASS])) + proxy[P_PASS])
             authstat = self.__recvall(2)
             if authstat[0:1] != chr(0x01).encode():
                 # Bad response
@@ -237,10 +245,11 @@ class socksocket(socket.socket):
             req = req + chr(0x01).encode() + ipaddr
         except socket.error:
             # Well it's not an IP number,  so it's probably a DNS name.
-            if proxy[3]:
+            if proxy[P_RDNS]:
                 # Resolve remotely
                 ipaddr = None
-                req = req + chr(0x03).encode() + chr(len(destaddr)).encode() + destaddr
+                req = req + (chr(0x03).encode() +
+                             chr(len(destaddr)).encode() + destaddr)
             else:
                 # Resolve locally
                 ipaddr = socket.inet_aton(socket.gethostbyname(destaddr))
@@ -256,7 +265,8 @@ class socksocket(socket.socket):
             # Connection failed
             self.close()
             if ord(resp[1:2])<=8:
-                raise Socks5Error((ord(resp[1:2]), _socks5errors[ord(resp[1:2])]))
+                raise Socks5Error((ord(resp[1:2]),
+                                   _socks5errors[ord(resp[1:2])]))
             else:
                 raise Socks5Error((9, _socks5errors[9]))
         # Get the bound address/port
@@ -304,7 +314,7 @@ class socksocket(socket.socket):
             ipaddr = socket.inet_aton(destaddr)
         except socket.error:
             # It's a DNS name. Check where it should be resolved.
-            if proxy[3]:
+            if proxy[P_RDNS]:
                 ipaddr = struct.pack("BBBB", 0x00, 0x00, 0x00, 0x01)
                 rmtrslv = True
             else:
@@ -312,8 +322,8 @@ class socksocket(socket.socket):
         # Construct the request packet
         req = struct.pack(">BBH", 0x04, 0x01, destport) + ipaddr
         # The username parameter is considered userid for SOCKS4
-        if proxy[4] != None:
-            req = req + proxy[4]
+        if proxy[P_USER] != None:
+            req = req + proxy[P_USER]
         req = req + chr(0x00).encode()
         # DNS name if remote resolving is required
         # NOTE: This is actually an extension to the SOCKS4 protocol
@@ -336,7 +346,8 @@ class socksocket(socket.socket):
             else:
                 raise Socks4Error((94, _socks4errors[4]))
         # Get the bound address/port
-        self.__proxysockname = (socket.inet_ntoa(resp[4:]), struct.unpack(">H", resp[2:4])[0])
+        self.__proxysockname = (socket.inet_ntoa(resp[4:]),
+                                struct.unpack(">H", resp[2:4])[0])
         if rmtrslv != None:
             self.__proxypeername = (socket.inet_ntoa(ipaddr), destport)
         else:
@@ -347,11 +358,13 @@ class socksocket(socket.socket):
         Negotiates a connection through an HTTP server.
         """
         # If we need to resolve locally, we do this now
-        if not proxy[3]:
+        if not proxy[P_RDNS]:
             addr = socket.gethostbyname(destaddr)
         else:
             addr = destaddr
-        self.sendall(("CONNECT " + addr + ":" + str(destport) + " HTTP/1.1\r\n" + "Host: " + destaddr + "\r\n\r\n").encode())
+        self.sendall(("CONNECT " + addr + ":" + str(destport) +
+                      " HTTP/1.1\r\n" + "Host: " + destaddr + "\r\n\r\n"
+                      ).encode())
         # We read the response until we get the string "\r\n\r\n"
         resp = self.recv(1)
         while resp.find("\r\n\r\n".encode()) == -1:
@@ -381,11 +394,13 @@ class socksocket(socket.socket):
         To select the proxy servers use setproxy() and chainproxy().
         """
         # Do a minimal input check first
-        if (not type(destpair) in (list,tuple)) or (len(destpair) < 2) or (type(destpair[0]) != type('')) or (type(destpair[1]) != int):
+        if ((not type(destpair) in (list,tuple)) or
+            (len(destpair) < 2) or (type(destpair[0]) != type('')) or
+            (type(destpair[1]) != int)):
             raise GeneralProxyError((5, _generalerrors[5]))
 
         for proxy in self.__proxy:
-            if (proxy[0] or PROXY_TYPE_NONE) not in PROXY_DEFAULTS:
+            if (proxy[P_TYPE] or PROXY_TYPE_NONE) not in PROXY_DEFAULTS:
                 raise GeneralProxyError((4, _generalerrors[4]))
 
         chain = self.__proxy[:]
@@ -394,24 +409,24 @@ class socksocket(socket.socket):
         first = True
         while chain:
             proxy = chain.pop(0)
-            if proxy[2] != None:
-                portnum = proxy[2]
+            if proxy[P_PORT] != None:
+                portnum = proxy[P_PORT]
             else:
-                portnum = PROXY_DEFAULTS[proxy[0] or PROXY_TYPE_NONE]
+                portnum = PROXY_DEFAULTS[proxy[P_TYPE] or PROXY_TYPE_NONE]
 
             if first:
-                _orgsocket.connect(self, (proxy[1], portnum))
+                _orgsocket.connect(self, (proxy[P_HOST], portnum))
                 first = False
 
             if chain:
                 nexthop = (chain[0][1], chain[0][2])
-                if proxy[0] == PROXY_TYPE_SOCKS5:
+                if proxy[P_TYPE] == PROXY_TYPE_SOCKS5:
                     self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
-                elif proxy[0] == PROXY_TYPE_SOCKS4:
+                elif proxy[P_TYPE] == PROXY_TYPE_SOCKS4:
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
-                elif proxy[0] == PROXY_TYPE_HTTP:
+                elif proxy[P_TYPE] == PROXY_TYPE_HTTP:
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
-                elif proxy[0] == None:
+                elif proxy[P_TYPE] is None:
                     _orgsocket.connect(self, (nexthop[0], nexthop[1]))
 
 
