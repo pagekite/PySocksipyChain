@@ -407,8 +407,7 @@ class socksocket(socket.socket):
             raise GeneralProxyError((5, _generalerrors[5]))
 
         if not self.__proxy:
-            dest = ':'.join([str(s) for s in destpair]).lower()
-            self.__proxy = _proxyroutes.get(dest,
+            self.__proxy = _proxyroutes.get(str(destpair[0]),
                                             _proxyroutes.get(DEFAULT_ROUTE,
                                                              None)) or []
 
