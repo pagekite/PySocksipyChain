@@ -426,8 +426,8 @@ class socksocket(socket.socket):
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
                 elif proxy[P_TYPE] == PROXY_TYPE_HTTP:
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
-                elif proxy[P_TYPE] is None:
-                    _orgsocket.connect(self, (nexthop[0], nexthop[1]))
+                else:
+                    raise GeneralProxyError((4, _generalerrors[4]))
 
 
 ## Netcat-like proxy-chaining tools follow ##
