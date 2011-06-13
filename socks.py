@@ -51,6 +51,7 @@ import ssl
 
 DEBUG = False
 
+PROXY_TYPE_DEFAULT = -1
 PROXY_TYPE_NONE = 0
 PROXY_TYPE_SOCKS4 = 1
 PROXY_TYPE_SOCKS5 = 2
@@ -62,6 +63,7 @@ PROXY_TYPE_SSL_ANON = 6
 PROXY_SSL_TYPES = (PROXY_TYPE_SSL, PROXY_TYPE_SSL_WEAK, PROXY_TYPE_SSL_ANON)
 PROXY_DEFAULTS = {
     PROXY_TYPE_NONE: 0,
+    PROXY_TYPE_DEFAULT: 0,
     PROXY_TYPE_SOCKS4: 1080,
     PROXY_TYPE_SOCKS5: 1080,
     PROXY_TYPE_HTTP: 8080,
@@ -70,6 +72,7 @@ PROXY_DEFAULTS = {
     PROXY_TYPE_SSL_ANON: 443,
 }
 PROXY_TYPES = {
+  'default': PROXY_TYPE_DEFAULT,
   'none': PROXY_TYPE_NONE,
   'socks4': PROXY_TYPE_SOCKS4,
   'socks5': PROXY_TYPE_SOCKS5,
@@ -463,6 +466,10 @@ class socksocket(socket.socket):
         result = None
         while chain:
             proxy = chain.pop(0)
+            if proxy[P_TYPE] == PROXY_TYPE_DEFAULT:
+              chain[0:0] = _proxyroutes.get(DEFAULT_ROUTE, [])
+              continue
+
             if proxy[P_PORT] != None:
                 portnum = proxy[P_PORT]
             else:
