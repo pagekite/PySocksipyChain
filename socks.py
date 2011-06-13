@@ -47,7 +47,7 @@ mainly to merge bug fixes found in Sourceforge
 """
 
 import os, fcntl, socket, sys, select, struct
-
+import ssl
 
 DEBUG = False
 
@@ -55,20 +55,29 @@ PROXY_TYPE_NONE = 0
 PROXY_TYPE_SOCKS4 = 1
 PROXY_TYPE_SOCKS5 = 2
 PROXY_TYPE_HTTP = 3
-# TODO: Add PROXY_TYPE_SSL
+PROXY_TYPE_SSL = 4
+PROXY_TYPE_SSL_WEAK = 5
+PROXY_TYPE_SSL_ANON = 6
 
+PROXY_SSL_TYPES = (PROXY_TYPE_SSL, PROXY_TYPE_SSL_WEAK, PROXY_TYPE_SSL_ANON)
 PROXY_DEFAULTS = {
     PROXY_TYPE_NONE: 0,
     PROXY_TYPE_SOCKS4: 1080,
     PROXY_TYPE_SOCKS5: 1080,
     PROXY_TYPE_HTTP: 8080,
+    PROXY_TYPE_SSL: 443,
+    PROXY_TYPE_SSL_WEAK: 443,
+    PROXY_TYPE_SSL_ANON: 443,
 }
 PROXY_TYPES = {
+  'none': PROXY_TYPE_NONE,
   'socks4': PROXY_TYPE_SOCKS4,
   'socks5': PROXY_TYPE_SOCKS5,
   'socks': PROXY_TYPE_SOCKS5,
   'http': PROXY_TYPE_HTTP,
-  'none': PROXY_TYPE_NONE,
+  'ssl': PROXY_TYPE_SSL,
+  'ssl-weak': PROXY_TYPE_SSL_WEAK,
+  'ssl-anon': PROXY_TYPE_SSL_ANON,
 }
 
 P_TYPE = 0
@@ -158,10 +167,27 @@ class socksocket(socket.socket):
     """
 
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, _sock=None):
-        _orgsocket.__init__(self, family, type, proto, _sock)
+        self.__sock = _orgsocket(family, type, proto, _sock)
         self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
+
+    def __getattribute__(self, name):
+        if name.startswith('_socksocket__'):
+          return object.__getattribute__(self, name)
+        elif name in ('setproxy', 'connect', 'getproxysockname',
+                      'getproxypeername', 'getpeername'):
+          return object.__getattribute__(self, name)
+        else:
+          return getattr(object.__getattribute__(self, "_socksocket__sock"),
+                         name)
+
+    def __setattr__(self, name, value):
+        if name.startswith('_socksocket__'):
+          return object.__setattr__(self, name, value)
+        else:
+          return setattr(object.__getattribute__(self, "_socksocket__sock"),
+                         name, value)
 
     def __recvall(self, count):
         """__recvall(count) -> data
@@ -395,6 +421,14 @@ class socksocket(socket.socket):
         self.__proxysockname = ("0.0.0.0", 0)
         self.__proxypeername = (addr, destport)
 
+    def __negotiatessl(self, destaddr, destport, proxy,
+                       insecure=False, anonymous=False):
+        """__negotiatehttp(self, destaddr, destport, proxy)
+        Negotiates an SSL session.
+        """
+        self.__sock = ssl.wrap_socket(self.__sock)
+        self.__sock.do_handshake()
+
     def connect(self, destpair):
         """connect(self, despair)
         Connects to the specified destination through a chain of proxies.
@@ -433,7 +467,7 @@ class socksocket(socket.socket):
 
             if first and proxy[P_HOST]:
                 if DEBUG: print '*** Connect: %s:%s' % (proxy[P_HOST], portnum)
-                result = _orgsocket.connect(self, (proxy[P_HOST], portnum))
+                result = self.__sock.connect((proxy[P_HOST], portnum))
                 first = False
 
             if chain:
@@ -445,6 +479,10 @@ class socksocket(socket.socket):
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
                 elif proxy[P_TYPE] == PROXY_TYPE_HTTP:
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
+                elif proxy[P_TYPE] in PROXY_SSL_TYPES:
+                    self.__negotiatessl(nexthop[0], nexthop[1], proxy,
+                      insecure=(proxy[P_TYPE] == PROXY_TYPE_SSL_WEAK),
+                      anonymous=(proxy[P_TYPE] == PROXY_TYPE_SSL_ANON))
                 elif proxy[P_TYPE] != PROXY_TYPE_NONE or not first:
                     raise GeneralProxyError((4, _generalerrors[4]))
 
