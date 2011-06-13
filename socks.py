@@ -426,9 +426,9 @@ class socksocket(socket.socket):
         """__negotiatehttp(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
-        if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport, self.__sock)
         self.__sock = ssl.wrap_socket(self.__sock)
         self.__sock.do_handshake()
+        if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport, self.__sock)
 
     def connect(self, destpair):
         """connect(self, despair)
