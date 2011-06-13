@@ -109,13 +109,16 @@ _socks4errors = ("request granted",
     "request rejected because the client program and identd report different user-ids",
     "unknown error")
 
-def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True, username=None, password=None):
+def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, append=False):
     """setdefaultproxy(proxytype, addr[, port[, rdns[, username[, password]]]])
     Sets a default proxy which all further socksocket objects will use,
     unless explicitly changed.
     """
     global _defaultproxy
-    _defaultproxy = [(proxytype, addr, port, rdns, username, password)]
+    if append and _defaultproxy:
+        _defaultproxy.append((proxytype, addr, port, rdns, username, password))
+    else:
+        _defaultproxy = [(proxytype, addr, port, rdns, username, password)]
 
 def wrapmodule(module):
     """wrapmodule(module)
@@ -157,7 +160,7 @@ class socksocket(socket.socket):
             data = data + d
         return data
 
-    def setproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None):
+    def setproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, append=False):
         """setproxy(proxytype, addr[, port[, rdns[, username[, password]]]])
         Sets the proxy to be used.
         proxytype -    The type of the proxy to be used. Three types
@@ -173,27 +176,12 @@ class socksocket(socket.socket):
                 The default is no authentication.
         password -    Password to authenticate with to the server.
                 Only relevant when username is also provided.
+        append -      Append this proxy to the chain.
         """
-        self.__proxy = [(proxytype, addr, port, rdns, username, password)]
-
-    def chainproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None):
-        """chainproxy(proxytype, addr[, port[, rdns[, username[, password]]]])
-        Append a proxy to be used.
-        proxytype -    The type of the proxy to be used. Three types
-                are supported: PROXY_TYPE_SOCKS4 (including socks4a),
-                PROXY_TYPE_SOCKS5 and PROXY_TYPE_HTTP
-        addr -        The address of the server (IP or DNS).
-        port -        The port of the server. Defaults to 1080 for SOCKS
-                servers and 8080 for HTTP proxy servers.
-        rdns -        Should DNS queries be preformed on the remote side
-                (rather than the local side). The default is True.
-                Note: This has no effect with SOCKS4 servers.
-        username -    Username to authenticate with to the server.
-                The default is no authentication.
-        password -    Password to authenticate with to the server.
-                Only relevant when username is also provided.
-        """
-        self.__proxy.append((proxytype, addr, port, rdns, username, password))
+        if append and self.__proxy:
+            self.__proxy.append((proxytype, addr, port, rdns, username, password))
+        else:
+            self.__proxy = [(proxytype, addr, port, rdns, username, password)]
 
     def __negotiatesocks5(self, destaddr, destport, proxy):
         """__negotiatesocks5(self, destaddr, destport, proxy)
@@ -455,7 +443,7 @@ def __proxy_connect_netcat(hostname, port, chain):
     try:
         s = socksocket(socket.AF_INET, socket.SOCK_STREAM)
         for proxy in chain:
-            s.chainproxy(*proxy)
+            s.setproxy(*proxy, append=True)
         s.connect((hostname, port))
     except Exception, e:
         sys.stderr.write('Error: %s\n' % e)
