@@ -49,6 +49,8 @@ mainly to merge bug fixes found in Sourceforge
 import os, fcntl, socket, sys, select, struct
 
 
+DEBUG = False
+
 PROXY_TYPE_NONE = 0
 PROXY_TYPE_SOCKS4 = 1
 PROXY_TYPE_SOCKS5 = 2
@@ -75,7 +77,8 @@ P_RDNS = 3
 P_USER = 4
 P_PASS = 5
 
-_defaultproxy = None
+DEFAULT_ROUTE = '*'
+_proxyroutes = { DEFAULT_ROUTE: None }
 _orgsocket = socket.socket
 
 class ProxyError(Exception): pass
@@ -115,28 +118,28 @@ _socks4errors = ("request granted",
     "request rejected because the client program and identd report different user-ids",
     "unknown error")
 
-def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, append=False):
+def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
+                    username=None, password=None,
+                    append=False, dest=DEFAULT_ROUTE):
     """setdefaultproxy(proxytype, addr[, port[, rdns[, username[, password]]]])
     Sets a default proxy which all further socksocket objects will use,
     unless explicitly changed.
     """
-    global _defaultproxy
-    if append and _defaultproxy:
-        _defaultproxy.append((proxytype, addr, port, rdns, username, password))
+    global _proxyroutes
+    route = _proxyroutes.get(dest.lower(), None)
+    proxy = (proxytype, addr, port, rdns, username, password)
+    if append and route:
+        route.append(proxy)
     else:
-        _defaultproxy = [(proxytype, addr, port, rdns, username, password)]
+        _proxyroutes[dest.lower()] = [proxy]
 
 def wrapmodule(module):
     """wrapmodule(module)
-    Attempts to replace a module's socket library with a SOCKS socket. Must set
-    a default proxy using setdefaultproxy(...) first.
+    Attempts to replace a module's socket library with a SOCKS socket.
     This will only work on modules that import socket directly into the namespace;
     most of the Python Standard Library falls into this category.
     """
-    if _defaultproxy != None:
-        module.socket.socket = socksocket
-    else:
-        raise GeneralProxyError((4, "no proxy specified"))
+    module.socket.socket = socksocket
 
 class socksocket(socket.socket):
     """socksocket([family[, type[, proto]]]) -> socket object
@@ -147,10 +150,7 @@ class socksocket(socket.socket):
 
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, _sock=None):
         _orgsocket.__init__(self, family, type, proto, _sock)
-        if _defaultproxy != None:
-            self.__proxy = _defaultproxy[:]
-        else:
-            self.__proxy = []
+        self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
 
@@ -394,10 +394,16 @@ class socksocket(socket.socket):
         To select the proxy servers use setproxy() and chainproxy().
         """
         # Do a minimal input check first
-        if ((not type(destpair) in (list,tuple)) or
+        if ((not type(destpair) in (list, tuple)) or
             (len(destpair) < 2) or (type(destpair[0]) != type('')) or
             (type(destpair[1]) != int)):
             raise GeneralProxyError((5, _generalerrors[5]))
+
+        if not self.__proxy:
+            dest = ':'.join([str(s) for s in destpair]).lower()
+            self.__proxy = _proxyroutes.get(dest,
+                                            _proxyroutes.get(DEFAULT_ROUTE,
+                                                             None)) or []
 
         for proxy in self.__proxy:
             if (proxy[P_TYPE] or PROXY_TYPE_NONE) not in PROXY_DEFAULTS:
@@ -405,6 +411,7 @@ class socksocket(socket.socket):
 
         chain = self.__proxy[:]
         chain.append([PROXY_TYPE_NONE, destpair[0], destpair[1]])
+        if DEBUG: print '*** Chain: %s' % chain
 
         first = True
         while chain:
@@ -415,11 +422,13 @@ class socksocket(socket.socket):
                 portnum = PROXY_DEFAULTS[proxy[P_TYPE] or PROXY_TYPE_NONE]
 
             if first:
+                if DEBUG: print '*** Connect: %s:%s' % (proxy[P_HOST], portnum)
                 _orgsocket.connect(self, (proxy[P_HOST], portnum))
                 first = False
 
             if chain:
                 nexthop = (chain[0][1], chain[0][2])
+                if DEBUG: print '*** Negotiating: %s' % (nexthop, )
                 if proxy[P_TYPE] == PROXY_TYPE_SOCKS5:
                     self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
                 elif proxy[P_TYPE] == PROXY_TYPE_SOCKS4:
@@ -479,13 +488,16 @@ def __make_proxy_chain(args):
 if __name__ == "__main__":
     try:
         args = sys.argv[1:]
+        if '--debug' in args:
+            DEBUG = True
+            args.remove('--debug')
+
         dest_host, dest_port = args.pop().split(':', 1)
         dest_port = int(dest_port)
         chain = __make_proxy_chain(args)
-    except Exception, e:
-        print 'Error: %s' % e
+    except:
         sys.stderr.write(('Usage: %s '
-                          '[<proto1:proxy1:port1> [<proto2:proxy2:port2> ...]] '
+                          '[<proto:proxy:port> [<proto:proxy:port> ...]] '
                           '<host:port>\n') % sys.argv[0])
         sys.exit(1)
 
