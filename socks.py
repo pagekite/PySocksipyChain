@@ -60,32 +60,37 @@ PROXY_TYPE_SSL = 4
 PROXY_TYPE_SSL_WEAK = 5
 PROXY_TYPE_SSL_ANON = 6
 PROXY_TYPE_TOR = 7
+PROXY_TYPE_HTTPS = 8
 
-PROXY_SSL_TYPES = (PROXY_TYPE_SSL, PROXY_TYPE_SSL_WEAK, PROXY_TYPE_SSL_ANON)
+PROXY_SSL_TYPES = (PROXY_TYPE_SSL, PROXY_TYPE_SSL_WEAK,
+                   PROXY_TYPE_SSL_ANON, PROXY_TYPE_HTTPS)
+PROXY_HTTP_TYPES = (PROXY_TYPE_HTTP, PROXY_TYPE_HTTPS)
 PROXY_SOCKS5_TYPES = (PROXY_TYPE_SOCKS5, PROXY_TYPE_TOR)
 PROXY_DEFAULTS = {
     PROXY_TYPE_NONE: 0,
     PROXY_TYPE_DEFAULT: 0,
+    PROXY_TYPE_HTTP: 8080,
+    PROXY_TYPE_HTTPS: 443,
     PROXY_TYPE_SOCKS4: 1080,
     PROXY_TYPE_SOCKS5: 1080,
-    PROXY_TYPE_HTTP: 8080,
     PROXY_TYPE_SSL: 443,
     PROXY_TYPE_SSL_WEAK: 443,
     PROXY_TYPE_SSL_ANON: 443,
     PROXY_TYPE_TOR: 9050,
 }
 PROXY_TYPES = {
-  'defaults': PROXY_TYPE_DEFAULT,
-  'default': PROXY_TYPE_DEFAULT,
   'none': PROXY_TYPE_NONE,
+  'default': PROXY_TYPE_DEFAULT,
+  'defaults': PROXY_TYPE_DEFAULT,
+  'http': PROXY_TYPE_HTTP,
+  'https': PROXY_TYPE_HTTPS,
+  'socks': PROXY_TYPE_SOCKS5,
   'socks4': PROXY_TYPE_SOCKS4,
   'socks4a': PROXY_TYPE_SOCKS4,
   'socks5': PROXY_TYPE_SOCKS5,
-  'socks': PROXY_TYPE_SOCKS5,
-  'http': PROXY_TYPE_HTTP,
   'ssl': PROXY_TYPE_SSL,
-  'ssl-weak': PROXY_TYPE_SSL_WEAK,
   'ssl-anon': PROXY_TYPE_SSL_ANON,
+  'ssl-weak': PROXY_TYPE_SSL_WEAK,
   'tor': PROXY_TYPE_TOR,
 }
 
@@ -168,7 +173,8 @@ def parseproxy(arg):
     if args[P_TYPE] in PROXY_SSL_TYPES:
       names = (args[P_HOST] or '').split(',')
       args[P_HOST] = names[0]
-      while len(args) <= P_CERTS: args.append(None)
+      while len(args) <= P_CERTS:
+        args.append((len(args) == P_RDNS) and True or None)
       args[P_CERTS] = names
 
     return args
@@ -478,10 +484,22 @@ class socksocket(socket.socket):
         self.__proxypeername = (addr, destport)
 
     def __get_ca_ciphers(self):
-        return None
+        return ':'.join(['DHE-RSA-AES256-SHA',
+                         'DHE-DSS-AES256-SHA',
+                         'AES256-SHA',
+                         'EDH-RSA-DES-CBC3-SHA',
+                         'EDH-DSS-DES-CBC3-SHA',
+                         'DES-CBC3-SHA',
+                         'DHE-RSA-AES128-SHA',
+                         'DHE-DSS-AES128-SHA',
+                         'AES128-SHA',
+                         'RC4-SHA',
+                         'EDH-RSA-DES-CBC-SHA',
+                         'EDH-DSS-DES-CBC-SHA',
+                         'DES-CBC-SHA'])
 
     def __get_ca_anon_ciphers(self):
-        return None
+        return ':'.join(['ADH-DES-CBC-SHA', 'ADH-DES-CBC3-SHA'])
 
     def __get_ca_certs(self):
         return None
@@ -511,8 +529,9 @@ class socksocket(socket.socket):
                                       ciphers=ciphers)
         self.__sock.do_handshake()
         if want_hosts:
-             pass # FIXME: Check name on cert
+            pass # FIXME: Check name on cert
 
+        self.encrypted = True
         if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport,
                                                      self.__sock)
 
@@ -572,19 +591,29 @@ class socksocket(socket.socket):
 
             if chain:
                 nexthop = (chain[0][1], chain[0][2])
-                if DEBUG: print '*** Negotiating: %s' % (nexthop, )
-                if proxy[P_TYPE] in PROXY_SOCKS5_TYPES:
-                    self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
-                elif proxy[P_TYPE] == PROXY_TYPE_SOCKS4:
-                    self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
-                elif proxy[P_TYPE] == PROXY_TYPE_HTTP:
-                    self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
-                elif proxy[P_TYPE] in PROXY_SSL_TYPES:
+
+                if proxy[P_TYPE] in PROXY_SSL_TYPES:
+                    if DEBUG: print '*** TLS/SSL Setup: %s' % (nexthop, )
                     self.__negotiatessl(nexthop[0], nexthop[1], proxy,
                       weak=(proxy[P_TYPE] == PROXY_TYPE_SSL_WEAK),
                       anonymous=(proxy[P_TYPE] == PROXY_TYPE_SSL_ANON))
-                elif proxy[P_TYPE] != PROXY_TYPE_NONE or not first:
-                    raise GeneralProxyError((4, _generalerrors[4]))
+
+                if proxy[P_TYPE] in PROXY_HTTP_TYPES:
+                    if DEBUG: print '*** HTTP CONNECT: %s' % (nexthop, )
+                    self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
+
+                if proxy[P_TYPE] in PROXY_SOCKS5_TYPES:
+                    if DEBUG: print '*** SOCKS5: %s' % (nexthop, )
+                    self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
+
+                elif proxy[P_TYPE] == PROXY_TYPE_SOCKS4:
+                    if DEBUG: print '*** SOCKS4: %s' % (nexthop, )
+                    self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
+
+                elif proxy[P_TYPE] == PROXY_TYPE_NONE:
+                    if not first:
+                         raise GeneralProxyError((4, _generalerrors[4]))
+                    if DEBUG: print '*** Raw connection: %s' % (nexthop, )
 
             first = False
 
