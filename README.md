@@ -1,3 +1,21 @@
+# PySocksipyChain #
+
+This is a modified version of socksipy, which supports arbitrary chaining of
+proxy servers and various modes of TLS/SSL encryption.
+
+This can be used to very easily add proxy and TLS/SSL support to almost any
+Python TCP-based communications, and was initially done to support the needs
+of the [PageKite](http://pagekite.org/) project.
+
+See [the PySocksipyChain page on
+pagekite.net](http://pagekite.net/wiki/Floss/PySocksipyChain/) for further
+details.
+
+
+-------------------------------------------------------------------------------
+# Original README #
+
+<pre>
 SocksiPy version 1.00
 A Python SOCKS module.
 (C) 2006 Dan-Haim. All rights reserved.
@@ -199,3 +217,4 @@ Please allow some time for your question to be received and handled.
 
 Dan-Haim,
 Author.
+</pre>
