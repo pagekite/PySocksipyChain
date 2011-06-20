@@ -484,22 +484,10 @@ class socksocket(socket.socket):
         self.__proxypeername = (addr, destport)
 
     def __get_ca_ciphers(self):
-        return ':'.join(['DHE-RSA-AES256-SHA',
-                         'DHE-DSS-AES256-SHA',
-                         'AES256-SHA',
-                         'EDH-RSA-DES-CBC3-SHA',
-                         'EDH-DSS-DES-CBC3-SHA',
-                         'DES-CBC3-SHA',
-                         'DHE-RSA-AES128-SHA',
-                         'DHE-DSS-AES128-SHA',
-                         'AES128-SHA',
-                         'RC4-SHA',
-                         'EDH-RSA-DES-CBC-SHA',
-                         'EDH-DSS-DES-CBC-SHA',
-                         'DES-CBC-SHA'])
+        return 'HIGH:MEDIUM:!MD5'
 
     def __get_ca_anon_ciphers(self):
-        return ':'.join(['ADH-DES-CBC-SHA', 'ADH-DES-CBC3-SHA'])
+        return 'aNULL'
 
     def __get_ca_certs(self):
         return None
