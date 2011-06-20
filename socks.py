@@ -469,14 +469,44 @@ class socksocket(socket.socket):
         self.__proxysockname = ("0.0.0.0", 0)
         self.__proxypeername = (addr, destport)
 
+    def __get_ca_ciphers(self):
+        return None
+
+    def __get_ca_anon_ciphers(self):
+        return None
+
+    def __get_ca_certs(self):
+        return None
+
     def __negotiatessl(self, destaddr, destport, proxy,
-                       insecure=False, anonymous=False):
+                       weak=False, anonymous=False):
         """__negotiatehttp(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
-        self.__sock = ssl.wrap_socket(self.__sock)
+        ssl_version = ssl.PROTOCOL_SSLv3
+        want_host = ca_certs = self_cert = None
+        ciphers = self.__get_ca_ciphers()
+        if anonymous:
+            # Insecure and use anon ciphers - this is just camoflage
+            ciphers = self.__get_ca_anon_ciphers()
+        elif not weak:
+            # This is normal, secure mode.
+            self_cert = proxy[P_USER] or None
+            ca_certs  = proxy[P_PASS] or self.__get_ca_certs() or None
+            want_host = proxy[P_HOST]
+
+        self.__sock = ssl.wrap_socket(self.__sock,
+                                      ssl_version=ssl_version,
+                                      keyfile=self_cert,
+                                      certfile=self_cert,
+                                      ca_certs=ca_certs,
+                                      ciphers=ciphers)
         self.__sock.do_handshake()
-        if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport, self.__sock)
+        if want_host:
+             pass # FIXME: Check name on cert
+
+        if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport,
+                                                     self.__sock)
 
     def __default_route(self, dest):
         return _proxyroutes.get(str(dest).lower(),
@@ -544,7 +574,7 @@ class socksocket(socket.socket):
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
                 elif proxy[P_TYPE] in PROXY_SSL_TYPES:
                     self.__negotiatessl(nexthop[0], nexthop[1], proxy,
-                      insecure=(proxy[P_TYPE] == PROXY_TYPE_SSL_WEAK),
+                      weak=(proxy[P_TYPE] == PROXY_TYPE_SSL_WEAK),
                       anonymous=(proxy[P_TYPE] == PROXY_TYPE_SSL_ANON))
                 elif proxy[P_TYPE] != PROXY_TYPE_NONE or not first:
                     raise GeneralProxyError((4, _generalerrors[4]))
