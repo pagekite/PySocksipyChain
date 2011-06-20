@@ -95,6 +95,7 @@ P_PORT = 2
 P_RDNS = 3
 P_USER = 4
 P_PASS = 5
+P_CERTS = 6
 
 DEFAULT_ROUTE = '*'
 _proxyroutes = { }
@@ -163,18 +164,25 @@ def parseproxy(arg):
 
     if len(args) == 2: args.append(PROXY_DEFAULTS[args[0]])
     if len(args) > 2: args[2] = int(args[2])
+
+    if args[P_TYPE] in PROXY_SSL_TYPES:
+      names = (args[P_HOST] or '').split(',')
+      args[P_HOST] = names[0]
+      while len(args) <= P_CERTS: args.append(None)
+      args[P_CERTS] = names
+
     return args
 
 def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
-                    username=None, password=None,
+                    username=None, password=None, certnames=None,
                     append=False, dest=DEFAULT_ROUTE):
-    """setdefaultproxy(proxytype, addr[, port[, rdns[, username[, password]]]])
+    """setdefaultproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
     Sets a default proxy which all further socksocket objects will use,
     unless explicitly changed.
     """
     global _proxyroutes
     route = _proxyroutes.get(dest.lower(), None)
-    proxy = (proxytype, addr, port, rdns, username, password)
+    proxy = (proxytype, addr, port, rdns, username, password, certnames)
     if append:
         if not route:
           route = _proxyroutes.get(DEFAULT_ROUTE, [])[:]
@@ -248,8 +256,8 @@ class socksocket(socket.socket):
             data = data + d
         return data
 
-    def setproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, append=False):
-        """setproxy(proxytype, addr[, port[, rdns[, username[, password]]]])
+    def setproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, certnames=None, append=False):
+        """setproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
         Sets the proxy to be used.
         proxytype -    The type of the proxy to be used. Three types
                 are supported: PROXY_TYPE_SOCKS4 (including socks4a),
@@ -266,7 +274,7 @@ class socksocket(socket.socket):
                 Only relevant when username is also provided.
         append -      Append this proxy to the chain.
         """
-        proxy = (proxytype, addr, port, rdns, username, password)
+        proxy = (proxytype, addr, port, rdns, username, password, certnames)
         if append and self.__proxy:
             self.__proxy.append(proxy)
         else:
@@ -484,7 +492,7 @@ class socksocket(socket.socket):
         Negotiates an SSL session.
         """
         ssl_version = ssl.PROTOCOL_SSLv3
-        want_host = ca_certs = self_cert = None
+        want_hosts = ca_certs = self_cert = None
         ciphers = self.__get_ca_ciphers()
         if anonymous:
             # Insecure and use anon ciphers - this is just camoflage
@@ -493,7 +501,7 @@ class socksocket(socket.socket):
             # This is normal, secure mode.
             self_cert = proxy[P_USER] or None
             ca_certs  = proxy[P_PASS] or self.__get_ca_certs() or None
-            want_host = proxy[P_HOST]
+            want_hosts = proxy[P_CERTS] or [proxy[P_HOST]]
 
         self.__sock = ssl.wrap_socket(self.__sock,
                                       ssl_version=ssl_version,
@@ -502,7 +510,7 @@ class socksocket(socket.socket):
                                       ca_certs=ca_certs,
                                       ciphers=ciphers)
         self.__sock.do_handshake()
-        if want_host:
+        if want_hosts:
              pass # FIXME: Check name on cert
 
         if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport,
@@ -561,7 +569,6 @@ class socksocket(socket.socket):
             if first and proxy[P_HOST]:
                 if DEBUG: print '*** Connect: %s:%s' % (proxy[P_HOST], portnum)
                 result = self.__sock.connect((proxy[P_HOST], portnum))
-                first = False
 
             if chain:
                 nexthop = (chain[0][1], chain[0][2])
@@ -578,6 +585,8 @@ class socksocket(socket.socket):
                       anonymous=(proxy[P_TYPE] == PROXY_TYPE_SSL_ANON))
                 elif proxy[P_TYPE] != PROXY_TYPE_NONE or not first:
                     raise GeneralProxyError((4, _generalerrors[4]))
+
+            first = False
 
         if DEBUG: print '*** Connected!'
         return result
