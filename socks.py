@@ -175,7 +175,7 @@ def parseproxy(arg):
       args[P_HOST] = names[0]
       while len(args) <= P_CERTS:
         args.append((len(args) == P_RDNS) and True or None)
-      args[P_CERTS] = names
+      args[P_CERTS] = (len(names) > 1) and names[1:] or names
 
     return args
 
@@ -660,7 +660,7 @@ def __make_proxy_chain(args):
         chain.append(parseproxy(arg))
     return chain
 
-if __name__ == "__main__":
+def Main():
     usesystemdefaults()
     try:
         args = sys.argv[1:]
@@ -682,4 +682,7 @@ if __name__ == "__main__":
             sys.exit(2)
     except KeyboardInterrupt:
         sys.exit(0)
+
+if __name__ == "__main__":
+    Main()
 
