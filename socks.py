@@ -601,7 +601,7 @@ class socksocket(socket.socket):
                 result = self.__sock.connect((proxy[P_HOST], portnum))
 
             if chain:
-                nexthop = (chain[0][1], chain[0][2])
+                nexthop = (chain[0][P_HOST] or '', int(chain[0][P_PORT] or 0))
 
                 if proxy[P_TYPE] in PROXY_SSL_TYPES:
                     if DEBUG: print '*** TLS/SSL Setup: %s' % (nexthop, )
@@ -622,13 +622,15 @@ class socksocket(socket.socket):
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
 
                 elif proxy[P_TYPE] == PROXY_TYPE_NONE:
-                    if not first:
+                    if first and nexthop[0] and nexthop[1]:
+                         if DEBUG: print '*** Connect: %s:%s' % nexthop
+                         result = self.__sock.connect(nexthop)
+                    else:
                          raise GeneralProxyError((4, _generalerrors[4]))
-                    if DEBUG: print '*** Raw connection: %s' % (nexthop, )
 
             first = False
 
-        if DEBUG: print '*** Connected!'
+        if DEBUG: print '*** Connected! (%s)' % result
         return result
 
 def wrapmodule(module):
