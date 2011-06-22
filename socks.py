@@ -179,24 +179,40 @@ def parseproxy(arg):
 
     return args
 
-def setdefaultproxy(proxytype=None, addr=None, port=None, rdns=True,
-                    username=None, password=None, certnames=None,
-                    append=False, dest=DEFAULT_ROUTE):
+def addproxy(dest, proxytype=None, addr=None, port=None, rdns=True,
+                   username=None, password=None, certnames=None):
+    global _proxyroutes
+    route = _proxyroutes.get(dest.lower(), None)
+    proxy = (proxytype, addr, port, rdns, username, password, certnames)
+    if not route:
+        route = _proxyroutes.get(DEFAULT_ROUTE, [])[:]
+    route.append(proxy)
+    _proxyroutes[dest.lower()] = route
+    if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
+
+def setproxy(dest, *args, **kwargs):
+    global _proxyroutes
+    dest = dest.lower()
+    if args:
+      _proxyroutes[dest] = []
+      return addproxy(dest, *args, **kwargs)
+    else:
+      if dest in _proxyroutes:
+        del _proxyroutes[dest.lower()]
+
+def setdefaultproxy(*args, **kwargs):
     """setdefaultproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
     Sets a default proxy which all further socksocket objects will use,
     unless explicitly changed.
     """
-    global _proxyroutes
-    route = _proxyroutes.get(dest.lower(), None)
-    proxy = (proxytype, addr, port, rdns, username, password, certnames)
-    if append:
-        if not route:
-          route = _proxyroutes.get(DEFAULT_ROUTE, [])[:]
-        route.append(proxy)
-        _proxyroutes[dest.lower()] = route
-    else:
-        _proxyroutes[dest.lower()] = [proxy]
-    if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
+    if args and args[P_TYPE] == PROXY_TYPE_DEFAULT:
+        raise ValueError("Circular reference to default proxy.")
+    return setproxy(DEFAULT_ROUTE, *args, **kwargs)
+
+def adddefaultproxy(*args, **kwargs):
+    if args and args[P_TYPE] == PROXY_TYPE_DEFAULT:
+        raise ValueError("Circular reference to default proxy.")
+    return addproxy(DEFAULT_ROUTE, *args, **kwargs)
 
 def usesystemdefaults():
     import os
@@ -206,7 +222,7 @@ def usesystemdefaults():
                                    os.environ.get('NO_PROXY',
                                                   '')).split(','))
     for host in no_proxy:
-        setdefaultproxy(PROXY_TYPE_NONE, dest=host)
+        setproxy(host, PROXY_TYPE_NONE)
 
     for var in ('ALL_PROXY', 'HTTPS_PROXY', 'http_proxy'):
         val = os.environ.get(var.lower(), os.environ.get(var, None))
@@ -236,7 +252,7 @@ class socksocket(socket.socket):
     def __getattribute__(self, name):
         if name.startswith('_socksocket__'):
           return object.__getattribute__(self, name)
-        elif name in ('setproxy', 'connect', 'getproxysockname',
+        elif name in ('addproxy', 'setproxy', 'connect', 'getproxysockname',
                       'getproxypeername', 'getpeername'):
           return object.__getattribute__(self, name)
         else:
@@ -262,7 +278,7 @@ class socksocket(socket.socket):
             data = data + d
         return data
 
-    def setproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, certnames=None, append=False):
+    def addproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, certnames=None):
         """setproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
         Sets the proxy to be used.
         proxytype -    The type of the proxy to be used. Three types
@@ -278,13 +294,17 @@ class socksocket(socket.socket):
                 The default is no authentication.
         password -    Password to authenticate with to the server.
                 Only relevant when username is also provided.
-        append -      Append this proxy to the chain.
         """
         proxy = (proxytype, addr, port, rdns, username, password, certnames)
-        if append and self.__proxy:
-            self.__proxy.append(proxy)
-        else:
-            self.__proxy = [proxy]
+        if not self.__proxy: self.__proxy = []
+        self.__proxy.append(proxy)
+
+    def setproxy(self, *args, **kwargs):
+        """setproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
+           (see addproxy)
+        """
+        self.__proxy = []
+        self.addproxy(*args, **kwargs)
 
     def __negotiatesocks5(self, destaddr, destport, proxy):
         """__negotiatesocks5(self, destaddr, destport, proxy)
@@ -524,9 +544,12 @@ class socksocket(socket.socket):
                                                      self.__sock)
 
     def __default_route(self, dest):
-        return _proxyroutes.get(str(dest).lower(),
-                                _proxyroutes.get(DEFAULT_ROUTE,
-                                                 None)) or []
+        route = _proxyroutes.get(str(dest).lower(), [])
+        if not route or route[0][P_TYPE] == PROXY_TYPE_DEFAULT:
+          route[0:0] = _proxyroutes.get(DEFAULT_ROUTE, [])
+        while route and route[0][P_TYPE] == PROXY_TYPE_DEFAULT:
+          route.pop(0)
+        return route
 
     def connect(self, destpair):
         """connect(self, despair)
@@ -646,7 +669,7 @@ def __proxy_connect_netcat(hostname, port, chain):
     try:
         s = socksocket(socket.AF_INET, socket.SOCK_STREAM)
         for proxy in chain:
-            s.setproxy(*proxy, append=True)
+            s.addproxy(*proxy)
         s.connect((hostname, port))
     except Exception, e:
         sys.stderr.write('Error: %s\n' % e)
@@ -661,17 +684,20 @@ def __make_proxy_chain(args):
     return chain
 
 def Main():
-    usesystemdefaults()
     try:
         args = sys.argv[1:]
         if '--debug' in args:
+            global DEBUG
             DEBUG = True
             args.remove('--debug')
+
+        usesystemdefaults()
 
         dest_host, dest_port = args.pop().split(':', 1)
         dest_port = int(dest_port)
         chain = __make_proxy_chain(args)
-    except:
+    except Exception, e:
+        print 'Error: %s' % e
         sys.stderr.write(('Usage: %s '
                           '[<proto:proxy:port> [<proto:proxy:port> ...]] '
                           '<host:port>\n') % sys.argv[0])
