@@ -47,9 +47,32 @@ mainly to merge bug fixes found in Sourceforge
 """
 
 import os, fcntl, socket, sys, select, struct, threading
-import ssl
-
 DEBUG = False
+
+
+##[ SSL compatibility code ]##################################################
+
+HAVE_SSL = False
+HAVE_PYOPENSSL = False
+try:
+    if '--nopyopenssl' in sys.argv or '--nossl' in sys.argv:
+        raise ImportError('pyOpenSSL disabled')
+
+    from xOpenSSL import SSL
+    HAVE_SSL = HAVE_PYOPENSSL = True
+
+except ImportError:
+    try:
+        if '--nossl' in sys.argv:
+            raise ImportError('SSL disabled')
+        import ssl
+        HAVE_SSL = True
+
+    except ImportError:
+        pass
+
+
+##[ SocksiPy itself ]#########################################################
 
 PROXY_TYPE_DEFAULT = -1
 PROXY_TYPE_NONE = 0
@@ -73,9 +96,6 @@ PROXY_DEFAULTS = {
     PROXY_TYPE_HTTPS: 443,
     PROXY_TYPE_SOCKS4: 1080,
     PROXY_TYPE_SOCKS5: 1080,
-    PROXY_TYPE_SSL: 443,
-    PROXY_TYPE_SSL_WEAK: 443,
-    PROXY_TYPE_SSL_ANON: 443,
     PROXY_TYPE_TOR: 9050,
 }
 PROXY_TYPES = {
@@ -83,16 +103,25 @@ PROXY_TYPES = {
   'default': PROXY_TYPE_DEFAULT,
   'defaults': PROXY_TYPE_DEFAULT,
   'http': PROXY_TYPE_HTTP,
-  'https': PROXY_TYPE_HTTPS,
   'socks': PROXY_TYPE_SOCKS5,
   'socks4': PROXY_TYPE_SOCKS4,
   'socks4a': PROXY_TYPE_SOCKS4,
   'socks5': PROXY_TYPE_SOCKS5,
-  'ssl': PROXY_TYPE_SSL,
-  'ssl-anon': PROXY_TYPE_SSL_ANON,
-  'ssl-weak': PROXY_TYPE_SSL_WEAK,
   'tor': PROXY_TYPE_TOR,
 }
+
+if HAVE_SSL:
+    PROXY_DEFAULTS.update({
+        PROXY_TYPE_SSL: 443,
+        PROXY_TYPE_SSL_WEAK: 443,
+        PROXY_TYPE_SSL_ANON: 443,
+    })
+    PROXY_TYPES.update({
+        'https': PROXY_TYPE_HTTPS,
+        'ssl': PROXY_TYPE_SSL,
+        'ssl-anon': PROXY_TYPE_SSL_ANON,
+        'ssl-weak': PROXY_TYPE_SSL_WEAK,
+    })
 
 P_TYPE = 0
 P_HOST = 1
@@ -188,7 +217,7 @@ def addproxy(dest, proxytype=None, addr=None, port=None, rdns=True,
         route = _proxyroutes.get(DEFAULT_ROUTE, [])[:]
     route.append(proxy)
     _proxyroutes[dest.lower()] = route
-    if DEBUG: print 'Routes are: %s' % (_proxyroutes, )
+    if DEBUG: DEBUG('Routes are: %s' % (_proxyroutes, ))
 
 def setproxy(dest, *args, **kwargs):
     global _proxyroutes
@@ -233,7 +262,7 @@ def usesystemdefaults():
 def sockcreateconn(*args, **kwargs):
     _thread_locals.create_conn = args[0]
     rv = _orgcreateconn(*args, **kwargs)
-    _thread_locals.create_conn = None
+    del(_thread_locals.create_conn)
     return rv
 
 class socksocket(socket.socket):
@@ -540,15 +569,15 @@ class socksocket(socket.socket):
             pass # FIXME: Check name on cert
 
         self.encrypted = True
-        if DEBUG: print '*** Wrapped %s:%s in %s' % (destaddr, destport,
-                                                     self.__sock)
+        if DEBUG: DEBUG('*** Wrapped %s:%s in %s' % (destaddr, destport,
+                                                     self.__sock))
 
     def __default_route(self, dest):
-        route = _proxyroutes.get(str(dest).lower(), [])
+        route = _proxyroutes.get(str(dest).lower(), [])[:]
         if not route or route[0][P_TYPE] == PROXY_TYPE_DEFAULT:
-          route[0:0] = _proxyroutes.get(DEFAULT_ROUTE, [])
+            route[0:0] = _proxyroutes.get(DEFAULT_ROUTE, [])
         while route and route[0][P_TYPE] == PROXY_TYPE_DEFAULT:
-          route.pop(0)
+            route.pop(0)
         return route
 
     def connect(self, destpair):
@@ -558,6 +587,7 @@ class socksocket(socket.socket):
         (identical to socket's connect).
         To select the proxy servers use setproxy() and chainproxy().
         """
+        if DEBUG: DEBUG('*** Connect: %s / %s' % (destpair, self.__proxy))
         destpair = getattr(_thread_locals, 'create_conn', destpair)
 
         # Do a minimal input check first
@@ -579,7 +609,7 @@ class socksocket(socket.socket):
 
         chain = proxy_chain[:]
         chain.append([PROXY_TYPE_NONE, destpair[0], destpair[1]])
-        if DEBUG: print '*** Chain: %s' % chain
+        if DEBUG: DEBUG('*** Chain: %s' % (chain, ))
 
         first = True
         result = None
@@ -588,7 +618,7 @@ class socksocket(socket.socket):
 
             if proxy[P_TYPE] == PROXY_TYPE_DEFAULT:
                 chain[0:0] = self.__default_route(default_dest)
-                if DEBUG: print '*** Chain: %s' % chain
+                if DEBUG: DEBUG('*** Chain: %s' % chain)
                 continue
 
             if proxy[P_PORT] != None:
@@ -597,40 +627,40 @@ class socksocket(socket.socket):
                 portnum = PROXY_DEFAULTS[proxy[P_TYPE] or PROXY_TYPE_NONE]
 
             if first and proxy[P_HOST]:
-                if DEBUG: print '*** Connect: %s:%s' % (proxy[P_HOST], portnum)
+                if DEBUG: DEBUG('*** Connect: %s:%s' % (proxy[P_HOST], portnum))
                 result = self.__sock.connect((proxy[P_HOST], portnum))
 
             if chain:
                 nexthop = (chain[0][P_HOST] or '', int(chain[0][P_PORT] or 0))
 
                 if proxy[P_TYPE] in PROXY_SSL_TYPES:
-                    if DEBUG: print '*** TLS/SSL Setup: %s' % (nexthop, )
+                    if DEBUG: DEBUG('*** TLS/SSL Setup: %s' % (nexthop, ))
                     self.__negotiatessl(nexthop[0], nexthop[1], proxy,
                       weak=(proxy[P_TYPE] == PROXY_TYPE_SSL_WEAK),
                       anonymous=(proxy[P_TYPE] == PROXY_TYPE_SSL_ANON))
 
                 if proxy[P_TYPE] in PROXY_HTTP_TYPES:
-                    if DEBUG: print '*** HTTP CONNECT: %s' % (nexthop, )
+                    if DEBUG: DEBUG('*** HTTP CONNECT: %s' % (nexthop, ))
                     self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
 
                 if proxy[P_TYPE] in PROXY_SOCKS5_TYPES:
-                    if DEBUG: print '*** SOCKS5: %s' % (nexthop, )
+                    if DEBUG: DEBUG('*** SOCKS5: %s' % (nexthop, ))
                     self.__negotiatesocks5(nexthop[0], nexthop[1], proxy)
 
                 elif proxy[P_TYPE] == PROXY_TYPE_SOCKS4:
-                    if DEBUG: print '*** SOCKS4: %s' % (nexthop, )
+                    if DEBUG: DEBUG('*** SOCKS4: %s' % (nexthop, ))
                     self.__negotiatesocks4(nexthop[0], nexthop[1], proxy)
 
                 elif proxy[P_TYPE] == PROXY_TYPE_NONE:
                     if first and nexthop[0] and nexthop[1]:
-                         if DEBUG: print '*** Connect: %s:%s' % nexthop
+                         if DEBUG: DEBUG('*** Connect: %s:%s' % nexthop)
                          result = self.__sock.connect(nexthop)
                     else:
                          raise GeneralProxyError((4, _generalerrors[4]))
 
             first = False
 
-        if DEBUG: print '*** Connected! (%s)' % result
+        if DEBUG: DEBUG('*** Connected! (%s)' % result)
         return result
 
 def wrapmodule(module):
@@ -685,12 +715,15 @@ def __make_proxy_chain(args):
         chain.append(parseproxy(arg))
     return chain
 
+def DebugPrint(text):
+  print text
+
 def Main():
     try:
         args = sys.argv[1:]
         if '--debug' in args:
             global DEBUG
-            DEBUG = True
+            DEBUG = DebugPrint
             args.remove('--debug')
 
         usesystemdefaults()
