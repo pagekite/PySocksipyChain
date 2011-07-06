@@ -1,6 +1,6 @@
 #!/usr/bin/python
 """SocksiPy - Python SOCKS module.
-Version 1.03
+Version 2.00
 
 Copyright 2011 Bjarni R. Einarsson. All rights reserved.
 Copyright 2006 Dan-Haim. All rights reserved.
@@ -52,24 +52,160 @@ DEBUG = False
 
 ##[ SSL compatibility code ]##################################################
 
+try:
+  import hashlib
+  def sha1hex(data):
+    hl = hashlib.sha1()
+    hl.update(data)
+    return hl.hexdigest().lower()
+except ImportError:
+  import sha
+  def sha1hex(data):
+    return sha.new(data).hexdigest().lower()
+
 HAVE_SSL = False
 HAVE_PYOPENSSL = False
+TLS_CA_CERTS = None
 try:
     if '--nopyopenssl' in sys.argv or '--nossl' in sys.argv:
         raise ImportError('pyOpenSSL disabled')
 
-    from xOpenSSL import SSL
+    from OpenSSL import SSL
     HAVE_SSL = HAVE_PYOPENSSL = True
+
+    def SSL_Connect(ctx, sock,
+                    server_side=False, accepted=False, connected=False,
+                    verify_names=None):
+        if DEBUG: DEBUG('*** TLS is provided by pyOpenSSL')
+        if verify_names:
+            def vcb(conn, x509, errno, depth, rc):
+                # FIXME: No ALT names, no wildcards ...
+                if errno != 0: return False
+                if depth != 0: return True
+                commonName = x509.get_subject().commonName.lower()
+                cNameDigest = '%s/%s' % (commonName,
+                                         x509.digest('sha1').replace(':',''))
+                if ((commonName in verify_names) or
+                    (cNameDigest in verify_names)):
+                    if DEBUG: DEBUG('*** Cert OK: %s' % (cNameDigest))
+                    # FIXME: Short-circuit evaluation is vulnerable to
+                    #        timing attacks.
+                    return True
+                if DEBUG: DEBUG('*** Cert bad: %s' % (commonName))
+                return False
+            ctx.set_verify(SSL.VERIFY_PEER |
+                           SSL.VERIFY_FAIL_IF_NO_PEER_CERT, vcb)
+        else:
+            def vcb(conn, x509, errno, depth, rc): return (errno == 0)
+            ctx.set_verify(SSL.VERIFY_NONE, vcb)
+
+        nsock = SSL.Connection(ctx, sock)
+        if accepted: nsock.set_accept_state()
+        if connected: nsock.set_connect_state()
+        if verify_names: nsock.do_handshake()
+
+        return nsock
 
 except ImportError:
     try:
         if '--nossl' in sys.argv:
             raise ImportError('SSL disabled')
+
         import ssl
         HAVE_SSL = True
 
+        class SSL(object):
+            SSLv23_METHOD = ssl.PROTOCOL_SSLv23
+            SSLv3_METHOD = ssl.PROTOCOL_SSLv3
+            TLSv1_METHOD = ssl.PROTOCOL_TLSv1
+            WantReadError = ssl.SSLError
+            class Error(Exception): pass
+            class SysCallError(Exception): pass
+            class WantWriteError(Exception): pass
+            class ZeroReturnError(Exception): pass
+            class Context(object):
+                def __init__(self, method):
+                    self.method = method
+                    self.privatekey_file = None
+                    self.certchain_file = None
+                    self.ca_certs = None
+                    self.ciphers = None
+                def use_privatekey_file(self, fn):
+                    self.privatekey_file = fn
+                def use_certificate_chain_file(self, fn):
+                    self.certchain_file = fn
+                def set_cipher_list(self, ciphers):
+                    self.ciphers = ciphers
+                def load_verify_locations(self, pemfile, capath=None):
+                    self.ca_certs = pemfile
+
+        def SSL_CheckPeerName(fd, names):
+            cert = fd.getpeercert()
+            certhash = sha1hex(fd.getpeercert(binary_form=True))
+            if not cert: return None
+            # FIXME: Short-circuit evaluation is vulnerable to timing attacks.
+            for field in cert['subject']:
+                if field[0][0].lower() == 'commonname':
+                    name = field[0][1].lower()
+                    namehash = '%s/%s' % (name, certhash)
+                    if name in names or namehash in names:
+                        if DEBUG: DEBUG('*** Cert OK: %s' % (namehash))
+                        return name
+
+            if 'subjectAltName' in cert:
+                for field in cert['subjectAltName']:
+                    if field[0].lower() == 'dns':
+                        name = field[1].lower()
+                        namehash = '%s/%s' % (name, certhash)
+                        if name in names or namehash in names:
+                            if DEBUG: DEBUG('*** Cert OK: %s' % (namehash))
+                            return name
+
+            return None
+
+        def SSL_Connect(ctx, sock,
+                        server_side=False, accepted=False, connected=False,
+                        verify_names=None):
+            if DEBUG: DEBUG('*** TLS is provided by native Python ssl')
+            reqs = (verify_names and ssl.CERT_REQUIRED or ssl.CERT_NONE)
+            fd = ssl.wrap_socket(sock, keyfile=ctx.privatekey_file,
+                                       certfile=ctx.certchain_file,
+                                       cert_reqs=reqs,
+                                       ca_certs=ctx.ca_certs,
+                                       do_handshake_on_connect=False,
+                                       ssl_version=ctx.method,
+                                       ciphers=ctx.ciphers,
+                                       server_side=server_side)
+            if verify_names:
+                fd.do_handshake()
+                if not SSL_CheckPeerName(fd, verify_names):
+                    raise SSL.Error(('Cert not in %s (%s)'
+                                     ) % (verify_names, reqs))
+            return fd
+
     except ImportError:
         pass
+
+
+def DisableSSLCompression():
+    # Hack to disable compression in OpenSSL and reduce memory usage *lots*.
+    # Source:
+    #   http://journal.paul.querna.org/articles/2011/04/05/openssl-memory-use/
+    try:
+        import ctypes
+        import glob
+        openssl = ctypes.CDLL(None, ctypes.RTLD_GLOBAL)
+        try:
+            f = openssl.SSL_COMP_get_compression_methods
+        except AttributeError:
+            ssllib = sorted(glob.glob("/usr/lib/libssl.so.*"))[0]
+            openssl = ctypes.CDLL(ssllib, ctypes.RTLD_GLOBAL)
+
+        openssl.SSL_COMP_get_compression_methods.restype = ctypes.c_void_p
+        openssl.sk_zero.argtypes = [ctypes.c_void_p]
+        openssl.sk_zero(openssl.SSL_COMP_get_compression_methods())
+    except Exception, e:
+        if DEBUG: DEBUG('disableSSLCompression: Failed: %s' % e)
 
 
 ##[ SocksiPy itself ]#########################################################
@@ -134,7 +270,7 @@ P_CERTS = 6
 DEFAULT_ROUTE = '*'
 _proxyroutes = { }
 _orgsocket = socket.socket
-_orgcreateconn = socket.create_connection
+_orgcreateconn = getattr(socket, 'create_connection', None)
 _thread_locals = threading.local()
 
 class ProxyError(Exception): pass
@@ -228,6 +364,10 @@ def setproxy(dest, *args, **kwargs):
     else:
       if dest in _proxyroutes:
         del _proxyroutes[dest.lower()]
+
+def setdefaultcertfile(path):
+    global TLS_CA_CERTS
+    TLS_CA_CERTS = path
 
 def setdefaultproxy(*args, **kwargs):
     """setdefaultproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
@@ -539,14 +679,14 @@ class socksocket(socket.socket):
         return 'aNULL'
 
     def __get_ca_certs(self):
-        return None
+        return TLS_CA_CERTS
 
     def __negotiatessl(self, destaddr, destport, proxy,
                        weak=False, anonymous=False):
         """__negotiatehttp(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
-        ssl_version = ssl.PROTOCOL_SSLv3
+        ssl_version = SSL.SSLv3_METHOD
         want_hosts = ca_certs = self_cert = None
         ciphers = self.__get_ca_ciphers()
         if anonymous:
@@ -558,17 +698,23 @@ class socksocket(socket.socket):
             ca_certs  = proxy[P_PASS] or self.__get_ca_certs() or None
             want_hosts = proxy[P_CERTS] or [proxy[P_HOST]]
 
-        self.__sock = ssl.wrap_socket(self.__sock,
-                                      ssl_version=ssl_version,
-                                      keyfile=self_cert,
-                                      certfile=self_cert,
-                                      ca_certs=ca_certs,
-                                      ciphers=ciphers)
-        self.__sock.do_handshake()
-        if want_hosts:
-            pass # FIXME: Check name on cert
+        try:
+            ctx = SSL.Context(ssl_version)
+            ctx.set_cipher_list(ciphers)
+            if self_cert:
+                ctx.use_certificate_chain_file(self_cert)
+                ctx.use_privatekey_file(self_cert)
+            if ca_certs and want_hosts:
+                ctx.load_verify_locations(ca_certs)
 
-        self.encrypted = True
+            self.__sock.setblocking(1)
+            self.__sock = SSL_Connect(ctx, self.__sock,
+                                      connected=True, verify_names=want_hosts)
+        except Exception, e:
+            if DEBUG: DEBUG('*** Oops: %s/%s/%s' % (e, self.__sock, want_hosts))
+            raise Exception(e)
+
+        self.__encrypted = True
         if DEBUG: DEBUG('*** Wrapped %s:%s in %s' % (destaddr, destport,
                                                      self.__sock))
 
@@ -683,19 +829,23 @@ def __unblock(f):
 def netcat(s, i, o):
     __unblock(s)
     __unblock(i)
-    while True:
-        in_r, out_r, err_r = select.select([s, i], [s, o], [s, i, o], 10)
-        if s in in_r:
-            data = s.recv(4096)
-            if data == "": break
-            o.write(data)
-        if i in in_r:
-            data = os.read(i.fileno(), 4096)
-            if data == "":
-                s.shutdown(socket.SHUT_WR)
-            else:
-                s.sendall(data)
-    s.close()
+    try:
+        while True:
+            in_r, out_r, err_r = select.select([s, i], [s, o], [s, i, o], 10)
+            if s in in_r:
+                data = s.recv(4096)
+                if data == "": break
+                o.write(data)
+            if i in in_r:
+                data = os.read(i.fileno(), 4096)
+                if data == "":
+                    s.shutdown(socket.SHUT_WR)
+                else:
+                    s.sendall(data)
+    except:
+        pass
+    finally:
+        s.close()
 
 def __proxy_connect_netcat(hostname, port, chain):
     try:
@@ -725,6 +875,9 @@ def Main():
             global DEBUG
             DEBUG = DebugPrint
             args.remove('--debug')
+        for arg in ('--nopyopenssl', '--nossl'):
+            while arg in args:
+                args.remove(arg)
 
         usesystemdefaults()
 
