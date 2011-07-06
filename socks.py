@@ -63,6 +63,27 @@ except ImportError:
   def sha1hex(data):
     return sha.new(data).hexdigest().lower()
 
+
+def SSL_CheckName(commonName, digest, valid_names):
+    pairs = [(commonName, '%s/%s' % (commonName, digest))]
+    valid = 0
+
+    if commonName.startswith('*.'):
+        commonName = commonName[1:].lower()
+        for name in valid_names:
+            name = name.split('/')[0].lower()
+            if ('.'+name).endswith(commonName):
+                pairs.append((name, '%s/%s' % (name, digest)))
+
+    for commonName, cNameDigest in pairs:
+        if ((commonName in valid_names) or (cNameDigest in valid_names)):
+            valid += 1
+
+    if DEBUG: DEBUG(('*** Cert score: %s (%s ?= %s)'
+                     ) % (valid, pairs, valid_names))
+    return valid
+
+
 HAVE_SSL = False
 HAVE_PYOPENSSL = False
 TLS_CA_CERTS = "/etc/ssl/certs/ca-certificates.crt"
@@ -79,32 +100,11 @@ try:
         if DEBUG: DEBUG('*** TLS is provided by pyOpenSSL')
         if verify_names:
             def vcb(conn, x509, errno, depth, rc):
-                # FIXME: No ALT names, no wildcards ...
                 if errno != 0: return False
                 if depth != 0: return True
-                commonName = x509.get_subject().commonName.lower()
-                cNameDigest = '%s/%s' % (commonName,
-                                         x509.digest('sha1').replace(':',''))
-                pairs = [(commonName, cNameDigest)]
-                if commonName.startswith('*.'):
-                    commonName = commonName[1:].lower()
-                    for name in verify_names:
-                         name = name.split('/')[0].lower()
-                         if ('.'+name).endswith(commonName):
-                            nameDig = '%s/%s' % (name,
-                                                 x509.digest('sha1').replace(':',''))
-                            pairs.append((name, nameDig))
-
-                for commonName, cNameDigest in pairs:
-                    if ((commonName in verify_names) or
-                        (cNameDigest in verify_names)):
-                        if DEBUG: DEBUG('*** Cert OK: %s' % (cNameDigest))
-                        # FIXME: Short-circuit evaluation is vulnerable to
-                        #        timing attacks.
-                        return True
-
-                if DEBUG: DEBUG('*** Cert bad: %s' % (commonName))
-                return False
+                return (SSL_CheckName(x509.get_subject().commonName.lower(),
+                                      x509.digest('sha1').replace(':',''),
+                                      verify_names) > 0)
             ctx.set_verify(SSL.VERIFY_PEER |
                            SSL.VERIFY_FAIL_IF_NO_PEER_CERT, vcb)
         else:
@@ -155,25 +155,18 @@ except ImportError:
             cert = fd.getpeercert()
             certhash = sha1hex(fd.getpeercert(binary_form=True))
             if not cert: return None
-            # FIXME: Short-circuit evaluation is vulnerable to timing attacks.
+            valid = 0
             for field in cert['subject']:
                 if field[0][0].lower() == 'commonname':
-                    name = field[0][1].lower()
-                    namehash = '%s/%s' % (name, certhash)
-                    if name in names or namehash in names:
-                        if DEBUG: DEBUG('*** Cert OK: %s' % (namehash))
-                        return name
+                    valid += SSL_CheckName(field[0][1].lower(), certhash, names)
 
             if 'subjectAltName' in cert:
                 for field in cert['subjectAltName']:
                     if field[0].lower() == 'dns':
                         name = field[1].lower()
-                        namehash = '%s/%s' % (name, certhash)
-                        if name in names or namehash in names:
-                            if DEBUG: DEBUG('*** Cert OK: %s' % (namehash))
-                            return name
-
-            return None
+                        valid += SSL_CheckName(field[1].lower(),
+                                               certhash, names)
+            return (valid > 0)
 
         def SSL_Connect(ctx, sock,
                         server_side=False, accepted=False, connected=False,
@@ -741,8 +734,8 @@ class socksocket(socket.socket):
             self.__sock = SSL_Connect(ctx, self.__sock,
                                       connected=True, verify_names=want_hosts)
         except Exception, e:
-            if DEBUG: DEBUG('*** Oops: %s/%s/%s' % (e, self.__sock, want_hosts))
-            raise Exception(e)
+            if DEBUG: DEBUG('*** SSL problem: %s/%s/%s' % (e, self.__sock, want_hosts))
+            raise
 
         self.__encrypted = True
         if DEBUG: DEBUG('*** Wrapped %s:%s in %s' % (destaddr, destport,
