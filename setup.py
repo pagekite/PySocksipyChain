@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from distutils.core import setup
 
-VERSION = "1.03"
+VERSION = "2.00"
 
 setup(
 name = "SocksiPy-chain",
