@@ -46,7 +46,7 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import os, fcntl, socket, sys, select, struct, threading
+import errno, fcntl, os, socket, sys, select, struct, threading
 DEBUG = False
 
 
@@ -429,12 +429,14 @@ class socksocket(socket.socket):
         self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
+        self.__makefile_refs = 0
 
     def __getattribute__(self, name):
         if name.startswith('_socksocket__'):
           return object.__getattribute__(self, name)
-        elif name in ('addproxy', 'setproxy', 'connect', 'getproxysockname',
-                      'getproxypeername', 'getpeername'):
+        elif name in ('addproxy', 'setproxy',
+                      'getproxysockname', 'getproxypeername',
+                       'connect', 'getpeername', 'recv', 'makefile', 'close'):
           return object.__getattribute__(self, name)
         else:
           return getattr(object.__getattribute__(self, "_socksocket__sock"),
@@ -458,6 +460,22 @@ class socksocket(socket.socket):
             if not d: raise GeneralProxyError((0, "connection closed unexpectedly"))
             data = data + d
         return data
+
+    def recv(self, count):
+        try:
+             return self.__sock.recv(count)
+        except SSL.SysCallError, e:
+             return ''
+
+    def close(self):
+        if self.__makefile_refs < 1:
+            self.__sock.close()
+        else:
+            self.__makefile_refs -= 1
+
+    def makefile(self, mode='r', bufsize=-1):
+        self.__makefile_refs += 1
+        return socket._fileobject(self, mode, bufsize, close=True)
 
     def addproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, certnames=None):
         """setproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
