@@ -65,7 +65,7 @@ except ImportError:
 
 HAVE_SSL = False
 HAVE_PYOPENSSL = False
-TLS_CA_CERTS = None
+TLS_CA_CERTS = "/etc/ssl/certs/ca-certificates.crt"
 try:
     if '--nopyopenssl' in sys.argv or '--nossl' in sys.argv:
         raise ImportError('pyOpenSSL disabled')
@@ -85,12 +85,24 @@ try:
                 commonName = x509.get_subject().commonName.lower()
                 cNameDigest = '%s/%s' % (commonName,
                                          x509.digest('sha1').replace(':',''))
-                if ((commonName in verify_names) or
-                    (cNameDigest in verify_names)):
-                    if DEBUG: DEBUG('*** Cert OK: %s' % (cNameDigest))
-                    # FIXME: Short-circuit evaluation is vulnerable to
-                    #        timing attacks.
-                    return True
+                pairs = [(commonName, cNameDigest)]
+                if commonName.startswith('*.'):
+                    commonName = commonName[1:].lower()
+                    for name in verify_names:
+                         name = name.split('/')[0].lower()
+                         if ('.'+name).endswith(commonName):
+                            nameDig = '%s/%s' % (name,
+                                                 x509.digest('sha1').replace(':',''))
+                            pairs.append((name, nameDig))
+
+                for commonName, cNameDigest in pairs:
+                    if ((commonName in verify_names) or
+                        (cNameDigest in verify_names)):
+                        if DEBUG: DEBUG('*** Cert OK: %s' % (cNameDigest))
+                        # FIXME: Short-circuit evaluation is vulnerable to
+                        #        timing attacks.
+                        return True
+
                 if DEBUG: DEBUG('*** Cert bad: %s' % (commonName))
                 return False
             ctx.set_verify(SSL.VERIFY_PEER |
