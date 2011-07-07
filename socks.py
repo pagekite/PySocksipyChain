@@ -276,7 +276,19 @@ DEFAULT_ROUTE = '*'
 _proxyroutes = { }
 _orgsocket = socket.socket
 _orgcreateconn = getattr(socket, 'create_connection', None)
-_thread_locals = threading.local()
+try:
+  _thread_locals = threading.local()
+  def _thread_local(): return _thread_locals
+
+except AttributeError:
+  # Pre 2.4, we have to implement our own.
+  _thread_local_dict = {}
+  class Storage(object): pass
+  def _thread_local():
+    tid = str(threading.currentThread())
+    if not tid in _thread_local_dict: _thread_local_dict[tid] = Storage()
+    return _thread_local_dict[tid]
+
 
 class ProxyError(Exception): pass
 class GeneralProxyError(ProxyError): pass
@@ -405,9 +417,9 @@ def usesystemdefaults():
             return
 
 def sockcreateconn(*args, **kwargs):
-    _thread_locals.create_conn = args[0]
+    _thread_local().create_conn = args[0]
     rv = _orgcreateconn(*args, **kwargs)
-    del(_thread_locals.create_conn)
+    del(_thread_local().create_conn)
     return rv
 
 class socksocket(socket.socket):
@@ -417,8 +429,8 @@ class socksocket(socket.socket):
     you must specify family=AF_INET, type=SOCK_STREAM and proto=0.
     """
 
-    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, _sock=None):
-        self.__sock = _orgsocket(family, type, proto, _sock)
+    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0):
+        self.__sock = _orgsocket(family, type, proto)
         self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
@@ -468,7 +480,11 @@ class socksocket(socket.socket):
 
     def makefile(self, mode='r', bufsize=-1):
         self.__makefile_refs += 1
-        return socket._fileobject(self, mode, bufsize, close=True)
+        try:
+            return socket._fileobject(self, mode, bufsize, close=True)
+        except TypeError:
+            # Python 2.2 compatibility hacks.
+            return socket._fileobject(self, mode, bufsize)
 
     def addproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, certnames=None):
         """setproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
@@ -757,7 +773,7 @@ class socksocket(socket.socket):
         To select the proxy servers use setproxy() and chainproxy().
         """
         if DEBUG: DEBUG('*** Connect: %s / %s' % (destpair, self.__proxy))
-        destpair = getattr(_thread_locals, 'create_conn', destpair)
+        destpair = getattr(_thread_local(), 'create_conn', destpair)
 
         # Do a minimal input check first
         if ((not type(destpair) in (list, tuple)) or
@@ -867,8 +883,7 @@ def netcat(s, i, o):
                     s.sendall(data)
     except:
         pass
-    finally:
-        s.close()
+    s.close()
 
 def __proxy_connect_netcat(hostname, port, chain):
     try:
