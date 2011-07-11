@@ -173,14 +173,24 @@ except ImportError:
                         verify_names=None):
             if DEBUG: DEBUG('*** TLS is provided by native Python ssl')
             reqs = (verify_names and ssl.CERT_REQUIRED or ssl.CERT_NONE)
-            fd = ssl.wrap_socket(sock, keyfile=ctx.privatekey_file,
-                                       certfile=ctx.certchain_file,
-                                       cert_reqs=reqs,
-                                       ca_certs=ctx.ca_certs,
-                                       do_handshake_on_connect=False,
-                                       ssl_version=ctx.method,
-                                       ciphers=ctx.ciphers,
-                                       server_side=server_side)
+            try:
+                fd = ssl.wrap_socket(sock, keyfile=ctx.privatekey_file,
+                                           certfile=ctx.certchain_file,
+                                           cert_reqs=reqs,
+                                           ca_certs=ctx.ca_certs,
+                                           do_handshake_on_connect=False,
+                                           ssl_version=ctx.method,
+                                           ciphers=ctx.ciphers,
+                                           server_side=server_side)
+            except:
+                fd = ssl.wrap_socket(sock, keyfile=ctx.privatekey_file,
+                                           certfile=ctx.certchain_file,
+                                           cert_reqs=reqs,
+                                           ca_certs=ctx.ca_certs,
+                                           do_handshake_on_connect=False,
+                                           ssl_version=ctx.method,
+                                           server_side=server_side)
+
             if verify_names:
                 fd.do_handshake()
                 if not SSL_CheckPeerName(fd, verify_names):
