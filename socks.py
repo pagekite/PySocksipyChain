@@ -48,6 +48,7 @@ mainly to merge bug fixes found in Sourceforge
 
 import errno, fcntl, os, socket, sys, select, struct, threading
 DEBUG = False
+#def DEBUG(foo): print foo
 
 
 ##[ SSL compatibility code ]##################################################
@@ -376,7 +377,7 @@ def addproxy(dest, proxytype=None, addr=None, port=None, rdns=True,
     global _proxyroutes
     route = _proxyroutes.get(dest.lower(), None)
     proxy = (proxytype, addr, port, rdns, username, password, certnames)
-    if not route:
+    if route is None:
         route = _proxyroutes.get(DEFAULT_ROUTE, [])[:]
     route.append(proxy)
     _proxyroutes[dest.lower()] = route
@@ -414,7 +415,7 @@ def usesystemdefaults():
     import os
 
     no_proxy = ['localhost', 'localhost.localdomain', '127.0.0.1']
-    no_proxy.extend(os.environ.get('no_PROXY',
+    no_proxy.extend(os.environ.get('NO_PROXY',
                                    os.environ.get('NO_PROXY',
                                                   '')).split(','))
     for host in no_proxy:
@@ -424,6 +425,7 @@ def usesystemdefaults():
         val = os.environ.get(var.lower(), os.environ.get(var, None))
         if val:
             setdefaultproxy(*parseproxy(val))
+            os.environ[var] = ''
             return
 
 def sockcreateconn(*args, **kwargs):
@@ -770,7 +772,7 @@ class socksocket(socket.socket):
     def __default_route(self, dest):
         route = _proxyroutes.get(str(dest).lower(), [])[:]
         if not route or route[0][P_TYPE] == PROXY_TYPE_DEFAULT:
-            route[0:0] = _proxyroutes.get(DEFAULT_ROUTE, [])
+            route[0:1] = _proxyroutes.get(DEFAULT_ROUTE, [])
         while route and route[0][P_TYPE] == PROXY_TYPE_DEFAULT:
             route.pop(0)
         return route
