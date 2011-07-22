@@ -702,9 +702,10 @@ class socksocket(socket.socket):
         self.sendall(("CONNECT " + addr + ":" + str(destport) +
                       " HTTP/1.1\r\n" + "Host: " + destaddr + "\r\n\r\n"
                       ).encode())
-        # We read the response until we get the string "\r\n\r\n"
+        # We read the response until we get "\r\n\r\n" or "\n\n"
         resp = self.recv(1)
-        while resp.find("\r\n\r\n".encode()) == -1:
+        while (resp.find("\r\n\r\n".encode()) == -1 and
+               resp.find("\n\n".encode()) == -1):
             resp = resp + self.recv(1)
         # We just need the first line to check if the connection
         # was successful
