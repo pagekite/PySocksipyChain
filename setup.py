@@ -16,6 +16,7 @@ TLS/SSL encryption if the OpenSSL modules are installed..",
      author = "Bjarni R. Einarsson",
      author_email="bre@pagekite.net",
      license = "BSD",
-     py_modules=["sockschain"]
+     py_modules=["sockschain"],
+     scripts=["sockschain.py"]
 )
 
