@@ -712,7 +712,6 @@ class socksocket(socket.socket):
 
     def send(self, *args, **kwargs):
         if self.__negotiating:
-            if DEBUG: DEBUG('*** Buffered: %s' % args[0])
             self.__buffer += args[0]
             self.__negotiatehttpproxy()
         else:
@@ -720,7 +719,6 @@ class socksocket(socket.socket):
 
     def sendall(self, *args, **kwargs):
         if self.__negotiating:
-            if DEBUG: DEBUG('*** Buffered: %s' % args[0])
             self.__buffer += args[0]
             self.__negotiatehttpproxy()
         else:
@@ -764,19 +762,23 @@ class socksocket(socket.socket):
           # Nope
           return
 
-        # Yup! Remove our send/sendall proxy methods.
-        if DEBUG: DEBUG('*** Got headers, sending Proxy request.')
+        # Remove our send/sendall hooks.
+        host, port, proxy = self.__negotiating
         self.__override.remove('send')
         self.__override.remove('sendall')
+        self.__buffer = self.__negotiating = None
 
-        # Send the proxy request.
-        host = self.__negotiating[0]
+        # Format the proxy request.
+        host += ':%d' % port
         headers = buf.split(CRLF)
         for hdr in headers:
             if hdr.lower().startswith('host: '): host = hdr[6:]
         req = headers[0].split(' ', 1)
         headers[0] = '%s http://%s%s' % (req[0], host, req[1])
-        self.__buffer = self.__negotiating = None
+        headers[1] = self.__getproxyauthheader(proxy) + headers[1]
+
+        # Send it!
+        if DEBUG: DEBUG("*** Proxy request:\n%s***" % CRLF.join(headers))
         self.__sock.sendall(CRLF.join(headers).encode())
 
     def __negotiatehttpconnect(self, destaddr, destport, proxy):
