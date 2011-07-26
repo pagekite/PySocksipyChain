@@ -727,10 +727,13 @@ class socksocket(socket.socket):
             buf, host, port, proxy = self.__stop_http_negotiation()
             self.__negotiatehttpconnect(host, port, proxy)
             self.__sock.sendall(buf)
-        try:
-             return self.__sock.recv(count)
-        except SSL.SysCallError, e:
-             return ''
+        while True:
+            try:
+                return self.__sock.recv(count)
+            except SSL.SysCallError, e:
+                return ''
+            except SSL.WantReadError, e:
+                pass
 
     def send(self, *args, **kwargs):
         if self.__negotiating:
