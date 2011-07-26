@@ -11,7 +11,7 @@
 #   - At work, use the local HTTP Proxy and PageKite.
 #   - From anywhere else, we use a Tor hidden service.
 #
-# With lapcat, this is possible by defining a connection rules in ~/.lapcat 
+# With lapcat, this is possible by defining a connection rules in ~/.lapcat
 # and then configuring ssh to use lapcat as a ProxyCommand.
 #
 import os, socket, sys
@@ -93,7 +93,7 @@ class LapCatConfig(object):
         pass
 
       elif line.startswith('[') and line.endswith(']'):
-        secname = line[1:-1] 
+        secname = line[1:-1]
         if secname == '':
           raise ValueError(('%s(line=%s): Null section') % (filename, count))
         elif secname not in self.rules:
@@ -141,10 +141,10 @@ class LapCatConfig(object):
 
   def ruleOrder(self):
     keys = [r for r in self.rules]
-    keys.sort(key=lambda rule: self.rules[rule].get(V_PRIORITY, 999))
+    keys.sort(key=lambda rule: int(self.rules[rule].get(V_PRIORITY, 999)))
     if DEBUG: DEBUG('Rule order: %s' % keys)
     return keys
- 
+
   def test(self, rule):
     if not rule.get(V_ACTIVE, False): return False
     try:
@@ -157,7 +157,7 @@ class LapCatConfig(object):
       return True
     except:
       return False
- 
+
   def connect(self):
     rules = self.ruleOrder()
 
@@ -189,16 +189,22 @@ class LapCatConfig(object):
 if __name__ == '__main__':
   args = sys.argv[1:]
   if '-v' in args:
-    DEBUG = DebugPrint 
+    DEBUG = DebugPrint
     args.remove('-v')
   while '-v' in args:
-    socks.DEBUG = DebugPrint 
+    socks.DEBUG = DebugPrint
     args.remove('-v')
 
   if len(args) == 2:
-    socks.netcat(LapCatConfig(args[0], args[1]).configure().connect(),
-                 sys.stdin, sys.stdout)
+    try:
+      socks.usesystemdefaults()
+      socks.netcat(LapCatConfig(args[0], args[1]).configure().connect(),
+                   sys.stdin, sys.stdout)
+    except IOError as e:
+      DebugPrint('%s' % e)
+      sys.exit(1)
+
   else:
     print 'Usage: %s [-v [-v]] host port' % sys.argv[0]
-    sys.exit(1)
+    sys.exit(2)
 
