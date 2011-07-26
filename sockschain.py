@@ -236,15 +236,20 @@ PROXY_TYPE_SSL_WEAK = 5
 PROXY_TYPE_SSL_ANON = 6
 PROXY_TYPE_TOR = 7
 PROXY_TYPE_HTTPS = 8
+PROXY_TYPE_HTTP_CONNECT = 9
+PROXY_TYPE_HTTPS_CONNECT = 10
 
 PROXY_SSL_TYPES = (PROXY_TYPE_SSL, PROXY_TYPE_SSL_WEAK,
-                   PROXY_TYPE_SSL_ANON, PROXY_TYPE_HTTPS)
+                   PROXY_TYPE_SSL_ANON, PROXY_TYPE_HTTPS,
+                   PROXY_TYPE_HTTPS_CONNECT)
 PROXY_HTTP_TYPES = (PROXY_TYPE_HTTP, PROXY_TYPE_HTTPS)
+PROXY_HTTPC_TYPES = (PROXY_TYPE_HTTP_CONNECT, PROXY_TYPE_HTTPS_CONNECT)
 PROXY_SOCKS5_TYPES = (PROXY_TYPE_SOCKS5, PROXY_TYPE_TOR)
 PROXY_DEFAULTS = {
     PROXY_TYPE_NONE: 0,
     PROXY_TYPE_DEFAULT: 0,
     PROXY_TYPE_HTTP: 8080,
+    PROXY_TYPE_HTTP_CONNECT: 8080,
     PROXY_TYPE_SOCKS4: 1080,
     PROXY_TYPE_SOCKS5: 1080,
     PROXY_TYPE_TOR: 9050,
@@ -254,6 +259,7 @@ PROXY_TYPES = {
   'default': PROXY_TYPE_DEFAULT,
   'defaults': PROXY_TYPE_DEFAULT,
   'http': PROXY_TYPE_HTTP,
+  'httpc': PROXY_TYPE_HTTP_CONNECT,
   'socks': PROXY_TYPE_SOCKS5,
   'socks4': PROXY_TYPE_SOCKS4,
   'socks4a': PROXY_TYPE_SOCKS4,
@@ -264,12 +270,14 @@ PROXY_TYPES = {
 if HAVE_SSL:
     PROXY_DEFAULTS.update({
         PROXY_TYPE_HTTPS: 443,
+        PROXY_TYPE_HTTPS_CONNECT: 443,
         PROXY_TYPE_SSL: 443,
         PROXY_TYPE_SSL_WEAK: 443,
         PROXY_TYPE_SSL_ANON: 443,
     })
     PROXY_TYPES.update({
         'https': PROXY_TYPE_HTTPS,
+        'httpcs': PROXY_TYPE_HTTPS_CONNECT,
         'ssl': PROXY_TYPE_SSL,
         'ssl-anon': PROXY_TYPE_SSL_ANON,
         'ssl-weak': PROXY_TYPE_SSL_WEAK,
@@ -447,13 +455,17 @@ class socksocket(socket.socket):
         self.__proxysockname = None
         self.__proxypeername = None
         self.__makefile_refs = 0
+        self.__buffer = ''
+        self.__negotiating = False
+        self.__override = ['addproxy', 'setproxy',
+                           'getproxysockname', 'getproxypeername',
+                           'close', 'connect', 'getpeername', 'makefile',
+                           'recv'] #, 'send', 'sendall']
 
     def __getattribute__(self, name):
         if name.startswith('_socksocket__'):
           return object.__getattribute__(self, name)
-        elif name in ('addproxy', 'setproxy',
-                      'getproxysockname', 'getproxypeername',
-                       'connect', 'getpeername', 'recv', 'makefile', 'close'):
+        elif name in self.__override:
           return object.__getattribute__(self, name)
         else:
           return getattr(object.__getattribute__(self, "_socksocket__sock"),
@@ -698,9 +710,78 @@ class socksocket(socket.socket):
         else:
           return ""
 
+    def send(self, *args, **kwargs):
+        if self.__negotiating:
+            if DEBUG: DEBUG('*** Buffered: %s' % args[0])
+            self.__buffer += args[0]
+            self.__negotiatehttpproxy()
+        else:
+            return self.__sock.send(*args, **kwargs)
+
+    def sendall(self, *args, **kwargs):
+        if self.__negotiating:
+            if DEBUG: DEBUG('*** Buffered: %s' % args[0])
+            self.__buffer += args[0]
+            self.__negotiatehttpproxy()
+        else:
+            return self.__sock.sendall(*args, **kwargs)
+
     def __negotiatehttp(self, destaddr, destport, proxy):
+        """__negotiatehttpproxy(self, destaddr, destport, proxy)
+        Negotiates a connection through an HTTP proxy server.
+        """
+        if destport == 80:
+            if DEBUG: DEBUG('*** Transparent HTTP proxy mode...')
+            self.__negotiating = (destaddr, destport, proxy)
+            self.__override.extend(['send', 'sendall'])
+        else:
+            return self.__negotiatehttpconnect(destaddr, destport, proxy)
+
+    def __negotiatehttpproxy(self):
         """__negotiatehttp(self, destaddr, destport, proxy)
-        Negotiates a connection through an HTTP server.
+        Negotiates an HTTP request through an HTTP proxy server.
+        """
+        buf = self.__buffer
+
+        # If our buffer is tiny, wait for data.
+        if len(buf) <= 3: return
+
+        # If not HTTP, fall back to HTTP CONNECT.
+        if buf[0:3].lower() not in ('get', 'pos', 'hea',
+                                    'put', 'del', 'opt', 'pro'):
+            self.__override.remove('send')
+            self.__override.remove('sendall')
+            self.__negotiatehttpconnect(*self.__negotiating)
+            self.sendall(self.__buffer)
+            return
+
+        # Have we got the end of the headers?
+        if buf.find('\r\n\r\n') != -1:
+          CRLF = '\r\n'
+        elif buf.find('\n\n') != -1:
+          CRLF = '\n'
+        else:
+          # Nope
+          return
+
+        # Yup! Remove our send/sendall proxy methods.
+        if DEBUG: DEBUG('*** Got headers, sending Proxy request.')
+        self.__override.remove('send')
+        self.__override.remove('sendall')
+
+        # Send the proxy request.
+        host = self.__negotiating[0]
+        headers = buf.split(CRLF)
+        for hdr in headers:
+            if hdr.lower().startswith('host: '): host = hdr[6:]
+        req = headers[0].split(' ', 1)
+        headers[0] = '%s http://%s%s' % (req[0], host, req[1])
+        self.__buffer = self.__negotiating = None
+        self.__sock.sendall(CRLF.join(headers).encode())
+
+    def __negotiatehttpconnect(self, destaddr, destport, proxy):
+        """__negotiatehttp(self, destaddr, destport, proxy)
+        Negotiates an HTTP CONNECT through an HTTP proxy server.
         """
         # If we need to resolve locally, we do this now
         if not proxy[P_RDNS]:
@@ -744,7 +825,7 @@ class socksocket(socket.socket):
 
     def __negotiatessl(self, destaddr, destport, proxy,
                        weak=False, anonymous=False):
-        """__negotiatehttp(self, destaddr, destport, proxy)
+        """__negotiatessl(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
         ssl_version = SSL.SSLv3_METHOD
@@ -846,9 +927,20 @@ class socksocket(socket.socket):
                       weak=(proxy[P_TYPE] == PROXY_TYPE_SSL_WEAK),
                       anonymous=(proxy[P_TYPE] == PROXY_TYPE_SSL_ANON))
 
-                if proxy[P_TYPE] in PROXY_HTTP_TYPES:
+                if proxy[P_TYPE] in PROXY_HTTPC_TYPES:
                     if DEBUG: DEBUG('*** HTTP CONNECT: %s' % (nexthop, ))
-                    self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
+                    self.__negotiatehttpconnect(nexthop[0], nexthop[1], proxy)
+
+                elif proxy[P_TYPE] in PROXY_HTTP_TYPES:
+                    if len(chain) > 1:
+                        # Chaining requires HTTP CONNECT.
+                        if DEBUG: DEBUG('*** HTTP CONNECT: %s' % (nexthop, ))
+                        self.__negotiatehttpconnect(nexthop[0], nexthop[1],
+                                                    proxy)
+                    else:
+                        # If we are last in the chain, do transparent magic.
+                        if DEBUG: DEBUG('*** HTTP PROXY: %s' % (nexthop, ))
+                        self.__negotiatehttp(nexthop[0], nexthop[1], proxy)
 
                 if proxy[P_TYPE] in PROXY_SOCKS5_TYPES:
                     if DEBUG: DEBUG('*** SOCKS5: %s' % (nexthop, ))
