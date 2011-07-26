@@ -220,8 +220,8 @@ def DisableSSLCompression():
         openssl.SSL_COMP_get_compression_methods.restype = ctypes.c_void_p
         openssl.sk_zero.argtypes = [ctypes.c_void_p]
         openssl.sk_zero(openssl.SSL_COMP_get_compression_methods())
-    except Exception, e:
-        if DEBUG: DEBUG('disableSSLCompression: Failed: %s' % e)
+    except Exception:
+        if DEBUG: DEBUG('disableSSLCompression: Failed')
 
 
 ##[ SocksiPy itself ]#########################################################
@@ -488,6 +488,7 @@ class socksocket(socket.socket):
         try:
             self.__sock.settimeout(20)
         except:
+            # Python 2.2 compatibility hacks.
             pass
 
         data = self.recv(count)
@@ -730,9 +731,9 @@ class socksocket(socket.socket):
         while True:
             try:
                 return self.__sock.recv(count)
-            except SSL.SysCallError, e:
+            except SSL.SysCallError:
                 return ''
-            except SSL.WantReadError, e:
+            except SSL.WantReadError:
                 pass
 
     def send(self, *args, **kwargs):
@@ -880,8 +881,10 @@ class socksocket(socket.socket):
             self.__sock.setblocking(1)
             self.__sock = SSL_Connect(ctx, self.__sock,
                                       connected=True, verify_names=want_hosts)
-        except Exception, e:
-            if DEBUG: DEBUG('*** SSL problem: %s/%s/%s' % (e, self.__sock, want_hosts))
+        except:
+            if DEBUG: DEBUG('*** SSL problem: %s/%s/%s' % (sys.exc_info(),
+                                                           self.__sock,
+                                                           want_hosts))
             raise
 
         self.__encrypted = True
@@ -1014,7 +1017,7 @@ def netcat(s, i, o):
             __unblock(i)
             in_r, out_r, err_r = select.select([s, i], [s, o], [s, i, o], 10)
             if s in in_r:
-                data = s.recv(4096)
+                data = s.recv(4096).decode()
                 if data == "": break
                 o.write(data)
             if i in in_r:
@@ -1024,6 +1027,7 @@ def netcat(s, i, o):
                 else:
                     s.sendall(data)
     except:
+        if DEBUG: DEBUG("Disconnected: %s" % (sys.exc_info(), ))
         pass
     s.close()
 
@@ -1033,8 +1037,8 @@ def __proxy_connect_netcat(hostname, port, chain):
         for proxy in chain:
             s.addproxy(*proxy)
         s.connect((hostname, port))
-    except Exception, e:
-        sys.stderr.write('Error: %s\n' % e)
+    except:
+        sys.stderr.write('Error: %s\n' % (sys.exc_info(), ))
         return False
     netcat(s, sys.stdin, sys.stdout)
     return True
@@ -1046,7 +1050,7 @@ def __make_proxy_chain(args):
     return chain
 
 def DebugPrint(text):
-  print text
+  print(text)
 
 def Main():
     try:
@@ -1064,8 +1068,8 @@ def Main():
         dest_host, dest_port = args.pop().split(':', 1)
         dest_port = int(dest_port)
         chain = __make_proxy_chain(args)
-    except Exception, e:
-        print 'Error: %s' % e
+    except:
+        DebugPrint('Error: %s' % (sys.exc_info(), ))
         sys.stderr.write(('Usage: %s '
                           '[<proto:proxy:port> [<proto:proxy:port> ...]] '
                           '<host:port>\n') % sys.argv[0])
