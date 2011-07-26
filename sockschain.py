@@ -46,7 +46,7 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import errno, fcntl, os, socket, sys, select, struct, threading
+import base64, errno, fcntl, os, socket, sys, select, struct, threading
 DEBUG = False
 #def DEBUG(foo): print foo
 
@@ -280,7 +280,7 @@ P_HOST = 1
 P_PORT = 2
 P_RDNS = 3
 P_USER = 4
-P_PASS = 5
+P_PASS = P_CACERTS = 5
 P_CERTS = 6
 
 DEFAULT_ROUTE = '*'
@@ -474,7 +474,8 @@ class socksocket(socket.socket):
         data = self.recv(count)
         while len(data) < count:
             d = self.recv(count-len(data))
-            if not d: raise GeneralProxyError((0, "connection closed unexpectedly"))
+            if d == '':
+                raise GeneralProxyError((0, "connection closed unexpectedly"))
             data = data + d
         return data
 
@@ -690,6 +691,13 @@ class socksocket(socket.socket):
         else:
             self.__proxypeername = (destaddr, destport)
 
+    def __getproxyauthheader(self, proxy):
+        if proxy[P_USER] and proxy[P_PASS]:
+          auth = proxy[P_USER] + ":" + proxy[P_PASS]
+          return "Proxy-Authorization: Basic %s\r\n" % base64.b64encode(auth)
+        else:
+          return ""
+
     def __negotiatehttp(self, destaddr, destport, proxy):
         """__negotiatehttp(self, destaddr, destport, proxy)
         Negotiates a connection through an HTTP server.
@@ -699,14 +707,15 @@ class socksocket(socket.socket):
             addr = socket.gethostbyname(destaddr)
         else:
             addr = destaddr
-        self.sendall(("CONNECT " + addr + ":" + str(destport) +
-                      " HTTP/1.1\r\n" + "Host: " + destaddr + "\r\n\r\n"
+        self.sendall(("CONNECT " + addr + ":" + str(destport) + " HTTP/1.1\r\n"
+                      + self.__getproxyauthheader(proxy)
+                      + "Host: " + destaddr + "\r\n\r\n"
                       ).encode())
         # We read the response until we get "\r\n\r\n" or "\n\n"
-        resp = self.recv(1)
+        resp = self.__recvall(1)
         while (resp.find("\r\n\r\n".encode()) == -1 and
                resp.find("\n\n".encode()) == -1):
-            resp = resp + self.recv(1)
+            resp = resp + self.__recvall(1)
         # We just need the first line to check if the connection
         # was successful
         statusline = resp.splitlines()[0].split(" ".encode(), 2)
@@ -747,7 +756,7 @@ class socksocket(socket.socket):
         elif not weak:
             # This is normal, secure mode.
             self_cert = proxy[P_USER] or None
-            ca_certs  = proxy[P_PASS] or self.__get_ca_certs() or None
+            ca_certs  = proxy[P_CACERTS] or self.__get_ca_certs() or None
             want_hosts = proxy[P_CERTS] or [proxy[P_HOST]]
 
         try:
