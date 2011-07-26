@@ -481,8 +481,15 @@ class socksocket(socket.socket):
     def __recvall(self, count):
         """__recvall(count) -> data
         Receive EXACTLY the number of bytes requested from the socket.
-        Blocks until the required number of bytes have been received.
+        Blocks until the required number of bytes have been received or a
+        timeout occurs.
         """
+        self.__sock.setblocking(1)
+        try:
+            self.__sock.settimeout(20)
+        except:
+            pass
+
         data = self.recv(count)
         while len(data) < count:
             d = self.recv(count-len(data))
@@ -490,12 +497,6 @@ class socksocket(socket.socket):
                 raise GeneralProxyError((0, "connection closed unexpectedly"))
             data = data + d
         return data
-
-    def recv(self, count):
-        try:
-             return self.__sock.recv(count)
-        except SSL.SysCallError, e:
-             return ''
 
     def close(self):
         if self.__makefile_refs < 1:
@@ -710,6 +711,27 @@ class socksocket(socket.socket):
         else:
           return ""
 
+    def __stop_http_negotiation(self):
+        buf = self.__buffer
+        host, port, proxy = self.__negotiating
+        self.__buffer = self.__negotiating = None
+        self.__override.remove('send')
+        self.__override.remove('sendall')
+        return (buf, host, port, proxy)
+
+    def recv(self, count):
+        if self.__negotiating:
+            # If the calling code tries to read before negotiating is done,
+            # assume this is not HTTP, bail and attempt HTTP CONNECT.
+            if DEBUG: DEBUG("*** Not HTTP, failing back to HTTP CONNECT.")
+            buf, host, port, proxy = self.__stop_http_negotiation()
+            self.__negotiatehttpconnect(host, port, proxy)
+            self.__sock.sendall(buf)
+        try:
+             return self.__sock.recv(count)
+        except SSL.SysCallError, e:
+             return ''
+
     def send(self, *args, **kwargs):
         if self.__negotiating:
             self.__buffer += args[0]
@@ -728,18 +750,21 @@ class socksocket(socket.socket):
         """__negotiatehttpproxy(self, destaddr, destport, proxy)
         Negotiates a connection through an HTTP proxy server.
         """
-        if destport == 80:
+        if destport in (21, 22, 23, 25, 109, 110, 143, 220, 443, 993, 995):
+            # Go straight to HTTP CONNECT for anything related to e-mail,
+            # SSH, telnet, FTP, SSL, ...
+            self.__negotiatehttpconnect(destaddr, destport, proxy)
+        else:
             if DEBUG: DEBUG('*** Transparent HTTP proxy mode...')
             self.__negotiating = (destaddr, destport, proxy)
             self.__override.extend(['send', 'sendall'])
-        else:
-            return self.__negotiatehttpconnect(destaddr, destport, proxy)
 
     def __negotiatehttpproxy(self):
         """__negotiatehttp(self, destaddr, destport, proxy)
         Negotiates an HTTP request through an HTTP proxy server.
         """
         buf = self.__buffer
+        host, port, proxy = self.__negotiating
 
         # If our buffer is tiny, wait for data.
         if len(buf) <= 3: return
@@ -747,26 +772,23 @@ class socksocket(socket.socket):
         # If not HTTP, fall back to HTTP CONNECT.
         if buf[0:3].lower() not in ('get', 'pos', 'hea',
                                     'put', 'del', 'opt', 'pro'):
-            self.__override.remove('send')
-            self.__override.remove('sendall')
-            self.__negotiatehttpconnect(*self.__negotiating)
-            self.sendall(self.__buffer)
+            if DEBUG: DEBUG("*** Not HTTP, failing back to HTTP CONNECT.")
+            self.__stop_http_negotiation()
+            self.__negotiatehttpconnect(host, port, proxy)
+            self.__sock.sendall(buf)
             return
 
         # Have we got the end of the headers?
-        if buf.find('\r\n\r\n') != -1:
-          CRLF = '\r\n'
-        elif buf.find('\n\n') != -1:
-          CRLF = '\n'
+        if buf.find('\r\n\r\n'.encode()) != -1:
+            CRLF = '\r\n'
+        elif buf.find('\n\n'.encode()) != -1:
+            CRLF = '\n'
         else:
-          # Nope
-          return
+            # Nope
+            return
 
         # Remove our send/sendall hooks.
-        host, port, proxy = self.__negotiating
-        self.__override.remove('send')
-        self.__override.remove('sendall')
-        self.__buffer = self.__negotiating = None
+        self.__stop_http_negotiation()
 
         # Format the proxy request.
         host += ':%d' % port
@@ -790,10 +812,11 @@ class socksocket(socket.socket):
             addr = socket.gethostbyname(destaddr)
         else:
             addr = destaddr
-        self.sendall(("CONNECT " + addr + ":" + str(destport) + " HTTP/1.1\r\n"
-                      + self.__getproxyauthheader(proxy)
-                      + "Host: " + destaddr + "\r\n\r\n"
-                      ).encode())
+        self.__sock.sendall(("CONNECT "
+                             + addr + ":" + str(destport) + " HTTP/1.1\r\n"
+                             + self.__getproxyauthheader(proxy)
+                             + "Host: " + destaddr + "\r\n\r\n"
+                             ).encode())
         # We read the response until we get "\r\n\r\n" or "\n\n"
         resp = self.__recvall(1)
         while (resp.find("\r\n\r\n".encode()) == -1 and
@@ -982,10 +1005,10 @@ def __unblock(f):
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
 def netcat(s, i, o):
-    __unblock(s)
-    __unblock(i)
     try:
         while True:
+            __unblock(s)
+            __unblock(i)
             in_r, out_r, err_r = select.select([s, i], [s, o], [s, i, o], 10)
             if s in in_r:
                 data = s.recv(4096)
