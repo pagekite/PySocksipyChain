@@ -1,0 +1,204 @@
+#!/usr/bin/python
+#
+# lapcat: Location Aware Proxy Cat
+#
+# This is a netcat-like tool for opening up a TCP connection to a
+# particular host, where the connection strategy depends on where we are.
+#
+# For example, say we want 'ssh homeserver' to behave like so:
+#
+#   - When at home, connect directly.
+#   - At work, use the local HTTP Proxy and PageKite.
+#   - From anywhere else, we use a Tor hidden service.
+#
+# With lapcat, this is possible by defining a connection rules in ~/.lapcat 
+# and then configuring ssh to use lapcat as a ProxyCommand.
+#
+import os, socket, sys
+import sockschain as socks
+
+def DebugPrint(text): sys.stderr.write(text+'\n')
+DEBUG = False
+# DEBUG = DebugPrint
+
+SYS_CONF_FILE = '/etc/lapcat/config'
+SYS_CONF_DIR = '/etc/lapcat'
+USER_CONF_FILE = '/etc/lapcat/config'
+USER_CONF_DIR = '~/.lapcat'
+IMPORT_KEYWORD = 'import'
+DEFAULT_RULE = 'default'
+DEFAULT_CHAIN = 'default'
+
+V_ACTIVE = 'active'
+V_CHAIN = 'chain'
+V_HOST = 'host'
+V_PORT = 'port'
+V_PRIORITY = 'priority'
+V_TEST_COMMAND = 'test command'
+V_TEST_HOST = 'if host'
+V_TEST_PORT = 'if port'
+VARIABLE_DEFAULTS = {
+  V_ACTIVE: True,
+  V_CHAIN: DEFAULT_CHAIN,
+  V_HOST: '%h',
+  V_PORT: '%p',
+  V_TEST_COMMAND: None,
+  V_TEST_HOST: None,
+  V_TEST_PORT: None,
+  V_PRIORITY: 100
+}
+
+
+class LapCatConfig(object):
+  def __init__(self, hostname, portnum):
+    self.hostname = hostname
+    self.portnum = str(int(portnum))
+    self.rules = {DEFAULT_RULE: {}}
+    self.rules[DEFAULT_RULE].update(VARIABLE_DEFAULTS)
+
+  def sysConfig(self, name=None):
+    return os.path.join(SYS_CONF_DIR, name or self.hostname)
+
+  def userConfig(self, name=None):
+    return os.path.join(os.path.expanduser(USER_CONF_DIR),
+                        name or self.hostname)
+
+  def load(self, filename=None, require=False, wildcards=False):
+    filename = filename or self.userConfig()
+    try:
+      fd = open(filename, 'r')
+    except:
+      fd = None
+      if wildcards:
+        filedir = os.path.dirname(filename)
+        parts = os.path.basename(filename).split('.')[1:]
+        while len(parts) > 0:
+          try:
+            fd = open(os.path.join(filedir, '_ANY_.' + '.'.join(parts)), 'r')
+            break
+          except:
+            parts.pop(0)
+
+      if not fd:
+        if not require: return self
+        raise
+
+    section = self.rules[DEFAULT_RULE]
+    count = 0
+    for line in fd:
+      count += 1
+      line = line.strip()
+
+      if line == '' or line.startswith('#'):
+        pass
+
+      elif line.startswith('[') and line.endswith(']'):
+        secname = line[1:-1] 
+        if secname == '':
+          raise ValueError(('%s(line=%s): Null section') % (filename, count))
+        elif secname not in self.rules:
+          self.rules[secname] = {}
+        section = self.rules[secname]
+
+      elif line.startswith(IMPORT_KEYWORD):
+        files = [self.sysConfig(name=line[len(IMPORT_KEYWORD)+1:]),
+                 self.userConfig(name=line[len(IMPORT_KEYWORD)+1:])]
+        loaded = False
+        for fn in files:
+          try:
+            self.load(filename=fn, require=True)
+            loaded = True
+          except IOError:
+            loaded = False
+        if not loaded:
+          raise ValueError(('%s(line=%s): File not found, tried: %s'
+                            ) % (filename, count, files))
+
+      elif '=' in line:
+        var, value = line.split('=')
+
+        var = var.strip().lower()
+        if var not in VARIABLE_DEFAULTS:
+          raise ValueError(('%s(line=%s): Unknown variable: %s'
+                            ) % (filename, count, var))
+
+        value = value.strip()
+        if value.lower() in ('true', 'yes'): value = True
+        elif value.lower() in ('false', 'no'): value = False
+        section[var] = value
+
+      else:
+        raise ValueError(('%s(line=%s): Invalid line') % (filename, count))
+
+    return self
+
+  def configure(self):
+    self.load(filename=SYS_CONF_FILE,     require=False)
+    self.load(filename=self.sysConfig(),  require=False, wildcards=True)
+    self.load(filename=USER_CONF_FILE,    require=False)
+    self.load(filename=self.userConfig(), require=False, wildcards=True)
+    return self
+
+  def ruleOrder(self):
+    keys = [r for r in self.rules]
+    keys.sort(key=lambda rule: self.rules[rule].get(V_PRIORITY, 999))
+    if DEBUG: DEBUG('Rule order: %s' % keys)
+    return keys
+ 
+  def test(self, rule):
+    if not rule.get(V_ACTIVE, False): return False
+    try:
+      hosts = (rule.get(V_TEST_HOST, '') or self.hostname).lower().split(', ')
+      if self.hostname.lower() not in hosts: return False
+
+      ports = (rule.get(V_TEST_PORT, '') or self.portnum).lower().split(', ')
+      if self.portnum not in ports: return False
+
+      return True
+    except:
+      return False
+ 
+  def connect(self):
+    rules = self.ruleOrder()
+
+    for ruleName in rules:
+
+      rule = self.rules[ruleName]
+      if self.test(rule):
+        try:
+          host = (rule.get(V_HOST, '') or self.hostname
+                  ).replace('%h', self.hostname)
+          port = (rule.get(V_PORT, '') or self.portnum
+                  ).replace('%p', self.portnum)
+
+          sock = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
+          for proxy in rule.get(V_CHAIN, DEFAULT_CHAIN).split(', '):
+            sock.addproxy(*socks.parseproxy(proxy.strip()
+                                            .replace('%h', host)
+                                            .replace('%p', port)))
+          sock.connect((host, int(port)))
+          if DEBUG: DEBUG('Connected! [%s]' % ruleName)
+          return sock
+
+        except Exception:
+          if DEBUG: DEBUG('connect(%s) failed: %s' % (ruleName, sys.exc_info()))
+
+    raise IOError("Connect failed, tried: %s" % rules)
+
+
+if __name__ == '__main__':
+  args = sys.argv[1:]
+  if '-v' in args:
+    DEBUG = DebugPrint 
+    args.remove('-v')
+  while '-v' in args:
+    socks.DEBUG = DebugPrint 
+    args.remove('-v')
+
+  if len(args) == 2:
+    socks.netcat(LapCatConfig(args[0], args[1]).configure().connect(),
+                 sys.stdin, sys.stdout)
+  else:
+    print 'Usage: %s [-v [-v]] host port' % sys.argv[0]
+    sys.exit(1)
+
