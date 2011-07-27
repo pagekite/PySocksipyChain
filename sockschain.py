@@ -1011,18 +1011,20 @@ def __unblock(f):
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
 def netcat(s, i, o):
+    if hasattr(o, 'buffer'): o = o.buffer
     try:
         while True:
-            __unblock(s)
-            __unblock(i)
-            in_r, out_r, err_r = select.select([s, i], [s, o], [s, i, o], 10)
+            in_r, out_r, err_r = select.select([s, i], [], [s, i, o], 10)
             if s in in_r:
-                data = s.recv(4096).decode()
-                if data == "": break
+                __unblock(s)
+                data = s.recv(4096)
+                if len(data) == 0: break
                 o.write(data)
+                o.flush()
             if i in in_r:
+                __unblock(i)
                 data = os.read(i.fileno(), 4096)
-                if data == "":
+                if len(data) == 0:
                     s.shutdown(socket.SHUT_WR)
                 else:
                     s.sendall(data)
