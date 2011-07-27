@@ -33,6 +33,7 @@ DEFAULT_CHAIN = 'default'
 V_ACTIVE = 'active'
 V_CHAIN = 'chain'
 V_DEFAULT_CHAIN = 'default chain'
+V_FINAL = 'final'
 V_HOST = 'host'
 V_PORT = 'port'
 V_PRIORITY = 'priority'
@@ -46,6 +47,7 @@ VARIABLE_DEFAULTS = {
   V_DEFAULT_CHAIN: None,
   V_HOST: '%h',
   V_PORT: '%p',
+  V_FINAL: False,
   V_TEST_COMMAND: None,
   V_TEST_HOST: None,
   V_TEST_PORT: None,
@@ -270,6 +272,8 @@ class LapCatConfig(object):
           except:
             if DEBUG: DEBUG('connect(%s) failed: %s' % (ruleName,
                                                         sys.exc_info()))
+            if rule.get(V_FINAL, False):
+              raise IOError("Connect failed at: %s" % ruleName)
 
     raise IOError("Connect failed, tried: %s" % rules)
 
