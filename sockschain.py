@@ -1017,13 +1017,13 @@ def netcat(s, i, o):
             in_r, out_r, err_r = select.select([s, i], [], [s, i, o], 10)
             if s in in_r:
                 __unblock(s)
-                data = s.recv(4096)
+                data = s.recv(8192)
                 if len(data) == 0: break
                 o.write(data)
                 o.flush()
             if i in in_r:
                 __unblock(i)
-                data = os.read(i.fileno(), 4096)
+                data = os.read(i.fileno(), 8192)
                 if len(data) == 0:
                     s.shutdown(socket.SHUT_WR)
                 else:
