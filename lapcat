@@ -1,6 +1,7 @@
 #!/usr/bin/python
 #
-# Copyright 2011, The Beanstalks Project ehf. <https://pagekite.net/>
+# Copyright 2011, Bjarni R. Einarsson <http://bre.klaki.net/>
+# License: AGPLv3
 #
 # lapcat: Location Aware Proxy Chooser And Tunneler
 #         a.k.a. Netcat for your Laptop.
@@ -297,12 +298,23 @@ if __name__ == '__main__':
       DebugPrint('%s' % e)
       sys.exit(1)
 
-  elif '-N' in args:
+  elif len(args) == 1 and args[0] == '-N':
     print('%s' % GetNetworkId())
 
+  elif len(args) == 1 and args[0] == '-P':
+    DebugPrint('FIXME: Implement HTTP Proxy mode.')
+    sys.exit(99)
+
+  elif len(args) == 1 and args[0] in ('-h', '--help'):
+    DebugPrint('FIXME: Implement help.')
+    sys.exit(99)
+
   else:
+    progname = os.path.basename(sys.argv[0])
     print(('Usage: %s [-v [-v]] host port  # Connect to host:port\n'
-           '       %s -N                   # Show current network ID'
-           ) % (sys.argv[0], sys.argv[0]))
-    sys.exit(2)
+           '       %s -N                   # Show current network ID\n'
+           '       %s -P                   # Behave like an HTTP Proxy\n'
+           '       %s -h                   # Print instructions'
+           ) % (progname, progname, progname, progname))
+    sys.exit(100)
 
