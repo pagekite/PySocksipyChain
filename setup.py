@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from distutils.core import setup
+from setuptools import setup
 
 VERSION = "2.0.0"
 
@@ -16,7 +16,11 @@ TLS/SSL encryption if the OpenSSL modules are installed.
      author = "Bjarni R. Einarsson",
      author_email="bre@pagekite.net",
      license = "BSD",
-     py_modules=["sockschain"],
-     scripts=["sockschain.py"]
+     packages=["sockschain"],
+     entry_points = {
+         'console_scripts': [
+             'sockschain = sockschain:Main'
+         ]
+     }
 )
 

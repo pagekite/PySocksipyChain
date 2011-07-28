@@ -1074,7 +1074,7 @@ def Main():
         DebugPrint('Error: %s' % (sys.exc_info(), ))
         sys.stderr.write(('Usage: %s '
                           '[<proto:proxy:port> [<proto:proxy:port> ...]] '
-                          '<host:port>\n') % sys.argv[0])
+                          '<host:port>\n') % os.path.basename(sys.argv[0]))
         sys.exit(1)
 
     try:
