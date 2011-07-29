@@ -1,3 +1,9 @@
+python-socksipychain-@VERSION@ (@VERSION@-1) unstable; urgency=low
+
+  * Automatic package build note.
+
+ -- PageKite Packaging Team <packages@pagekite.net>  @DATE@
+
 python-socksipychain-2.0.0 (2.0.0-1) unstable; urgency=low
 
   * Initial release

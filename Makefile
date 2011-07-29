@@ -13,8 +13,13 @@ VERSION=`python setup.py --version`
 	@echo ======= .DEB =====================
 	@cp -v dist/SocksipyChain*tar.gz \
                 ../python-socksipychain-$(VERSION)_$(VERSION).orig.tar.gz
-	@sed -e "s/@VERSION@/$(VERSION)/" \
+	@sed -e "s/@VERSION@/$(VERSION)/g" \
 		< debian/control.in >debian/control
+	@sed -e "s/@VERSION@/$(VERSION)/g" \
+		< debian/copyright.in >debian/copyright
+	@sed -e "s/@VERSION@/$(VERSION)/g" \
+	     -e "s/@DATE@/`date -R`/g" \
+		< debian/changelog.in >debian/changelog
 	@debuild -i -us -uc -b
 	@mv ../python-socksipychain_*.deb dist/
 	@rm ../python-socksipychain-*
@@ -29,6 +34,8 @@ VERSION=`python setup.py --version`
 
 clean:
 	@rm -rf .rpm .targz .deb build MANIFEST *.egg-info
+	@rm -rf debian/files debian/control debian/copyright debian/python-*
+	@rm -rf debian/changelog
 
 distclean: clean
 	@rm -rf dist
