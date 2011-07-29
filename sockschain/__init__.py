@@ -1010,28 +1010,62 @@ def __unblock(f):
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
+def __block(f):
+    fd = f.fileno()
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl - os.O_NONBLOCK)
+
 def netcat(s, i, o):
     if hasattr(o, 'buffer'): o = o.buffer
+    __unblock(s)
+    __unblock(i)
     try:
-        while True:
-            in_r, out_r, err_r = select.select([s, i], [], [s, i, o], 10)
+        in_fileno = i.fileno()
+        isel = [s, i]
+        obuf, sbuf, oselo, osels = [], [], [], []
+        while isel:
+            in_r, out_r, err_r = select.select(isel, oselo+osels, [], 1000)
+
             if s in in_r:
-                __unblock(s)
-                data = s.recv(8192)
-                if len(data) == 0: break
-                o.write(data)
-                o.flush()
-            if i in in_r:
-                __unblock(i)
-                data = os.read(i.fileno(), 8192)
-                if len(data) == 0:
-                    s.shutdown(socket.SHUT_WR)
+                obuf.append(s.recv(4096))
+                if len(obuf[-1]) == 0:
+                    isel.remove(s)
                 else:
-                    s.sendall(data)
+                    oselo = [o]
+
+            if o in out_r:
+                o.write(obuf[0])
+                if len(obuf) == 1:
+                    obuf, oselo = [], []
+                    o.flush()
+                else:
+                    obuf.pop(0)
+
+            if i in in_r:
+                sbuf.append(os.read(in_fileno, 4096))
+                if len(sbuf[-1]) == 0:
+                    isel.remove(i)
+                else:
+                    osels = [s]
+
+            if s in out_r:
+                s.send(sbuf[0])
+                if len(sbuf) == 1:
+                    if not sbuf[0]: s.shutdown(socket.SHUT_WR)
+                    sbuf, osels = [], []
+                else:
+                    sbuf.pop(0)
+
     except:
         if DEBUG: DEBUG("Disconnected: %s" % (sys.exc_info(), ))
-        pass
+
+    __block(s)
+    __block(o)
+    for data in sbuf: s.sendall(data)
+    for data in obuf: o.write(data)
+    i.close()
     s.close()
+    o.close()
 
 def __proxy_connect_netcat(hostname, port, chain):
     try:
