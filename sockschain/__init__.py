@@ -1056,13 +1056,14 @@ def netcat(s, i, o):
                 else:
                     sbuf.pop(0)
 
+        __block(s)
+        __block(o)
+        for data in sbuf: s.sendall(data)
+        for data in obuf: o.write(data)
+
     except:
         if DEBUG: DEBUG("Disconnected: %s" % (sys.exc_info(), ))
 
-    __block(s)
-    __block(o)
-    for data in sbuf: s.sendall(data)
-    for data in obuf: o.write(data)
     i.close()
     s.close()
     o.close()
