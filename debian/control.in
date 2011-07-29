@@ -1,4 +1,4 @@
-Source: python-socksipychain-2.0.0
+Source: python-socksipychain-@VERSION@
 Section: python
 Priority: optional
 Maintainer: PageKite Packaging Team <packages@pagekite.net>
