@@ -1,3 +1,11 @@
+# These are rules for building various types of distributions of this
+# module.  This Makefile is known to work on an Ubuntu 11.04 and builds
+# the following packages:
+#
+#    - Source .tar.gz distribution
+#    - Source and binary (noarch) .rpm for: el5, el6
+#    - Binary (all) .deb
+#
 dist: .targz .rpm .deb
 	@echo ======= BUILD OK =====================
 	@ls -l dist/
