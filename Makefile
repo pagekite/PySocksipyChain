@@ -3,7 +3,7 @@
 # the following packages:
 #
 #    - Source .tar.gz distribution
-#    - Source and binary (noarch) .rpm for: el5, el6
+#    - Source and binary (noarch) .rpm for: RHEL 4/5/6, Fedora 13/14/15
 #    - Binary (all) .deb
 #
 dist: .targz .rpm .deb
@@ -33,15 +33,23 @@ VERSION=`python setup.py --version`
 	@rm ../python-socksipychain-*
 	@touch .deb
 
-.rpm: rpm_el5 rpm_el6
+.rpm: rpm_el4 rpm_el5 rpm_el6-fc13 rpm_fc14-15
 	@touch .rpm
+
+rpm_fc14-15:
+	@./scripts/rpm-setup.sh 0fc14fc15 /usr/lib/python2.7/site-packages
+	@make rpm
+
+rpm_el4:
+	@./scripts/rpm-setup.sh 0el4 /usr/lib/python2.3/site-packages
+	@make rpm
 
 rpm_el5:
 	@./scripts/rpm-setup.sh 0el5 /usr/lib/python2.4/site-packages
 	@make rpm
 
-rpm_el6:
-	@./scripts/rpm-setup.sh 0el6 /usr/lib/python2.6/site-packages
+rpm_el6-fc13:
+	@./scripts/rpm-setup.sh 0el6fc13 /usr/lib/python2.6/site-packages
 	@make rpm
 
 rpm: setup.py sockschain/__init__.py Makefile
