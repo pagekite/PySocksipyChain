@@ -25,15 +25,25 @@ VERSION=`python setup.py --version`
 	@rm ../python-socksipychain-*
 	@touch .deb
 
-.rpm: setup.py sockschain/__init__.py Makefile
+.rpm: rpm_el5 rpm_el6
+	@touch .rpm
+
+rpm_el5:
+	@./scripts/rpm-setup.sh 0el5 /usr/lib/python2.4/site-packages
+	@make rpm
+
+rpm_el6:
+	@./scripts/rpm-setup.sh 0el6 /usr/lib/python2.6/site-packages
+	@make rpm
+
+rpm: setup.py sockschain/__init__.py Makefile
 	@echo ======= .RPM =====================
 	@sed -i -e 's/"Socks/"python-Socks/g' setup.py
 	@python setup.py bdist_rpm --install scripts/rpm-install.sh
 	@sed -i -e 's/"python-Socks/"Socks/g' setup.py
-	@touch .rpm
 
 clean:
-	@rm -rf .rpm .targz .deb build MANIFEST *.egg-info
+	@rm -rf .rpm .targz .deb build MANIFEST *.egg-info setup.cfg
 	@rm -rf debian/files debian/control debian/copyright debian/python-*
 	@rm -rf debian/changelog
 
