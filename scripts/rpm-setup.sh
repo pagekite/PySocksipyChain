@@ -2,7 +2,8 @@
 cat <<tac >setup.cfg
 [install]
 prefix=/usr
-install-lib=$2
+install_lib=$2
+single_version_externally_managed=yes
 
 [bdist_rpm]
 release=$1

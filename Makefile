@@ -37,19 +37,19 @@ VERSION=`python setup.py --version`
 	@touch .rpm
 
 rpm_fc14-15:
-	@./scripts/rpm-setup.sh 0fc14fc15 /usr/lib/python2.7/site-packages
+	@./scripts/rpm-setup.sh 0pagekite_fc14fc15 /usr/lib/python2.7/site-packages
 	@make rpm
 
 rpm_el4:
-	@./scripts/rpm-setup.sh 0el4 /usr/lib/python2.3/site-packages
+	@./scripts/rpm-setup.sh 0pagekite_el4 /usr/lib/python2.3/site-packages
 	@make rpm
 
 rpm_el5:
-	@./scripts/rpm-setup.sh 0el5 /usr/lib/python2.4/site-packages
+	@./scripts/rpm-setup.sh 0pagekite_el5 /usr/lib/python2.4/site-packages
 	@make rpm
 
 rpm_el6-fc13:
-	@./scripts/rpm-setup.sh 0el6fc13 /usr/lib/python2.6/site-packages
+	@./scripts/rpm-setup.sh 0pagekite_el6fc13 /usr/lib/python2.6/site-packages
 	@make rpm
 
 rpm: setup.py sockschain/__init__.py Makefile
