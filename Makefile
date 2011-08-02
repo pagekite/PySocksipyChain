@@ -6,7 +6,7 @@
 #    - Source and binary (noarch) .rpm for: RHEL 4/5/6, Fedora 13/14/15
 #    - Binary (all) .deb
 #
-dist: .targz .rpm .deb
+dist: .rpm .targz .deb
 	@echo ======= BUILD OK =====================
 	@ls -l dist/
 
@@ -19,6 +19,7 @@ VERSION=`python setup.py --version`
 
 .deb: .targz debian/control.in setup.py Makefile
 	@echo ======= .DEB =====================
+	@rm -f setup.cfg
 	@cp -v dist/SocksipyChain*tar.gz \
                 ../python-socksipychain-$(VERSION)_$(VERSION).orig.tar.gz
 	@sed -e "s/@VERSION@/$(VERSION)/g" \
