@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 from setuptools import setup
 
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 
 setup(
-    name = "SocksipyChain",
+    name = "python-SocksipyChain",
     version = VERSION,
     description = "A Python SOCKS/HTTP Proxy module",
     long_description = """\
