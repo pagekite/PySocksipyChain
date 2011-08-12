@@ -1036,8 +1036,11 @@ def netcat(s, i, o):
             if o in out_r:
                 o.write(obuf[0])
                 if len(obuf) == 1:
+                    if len(obuf[0]) == 0:
+                        o.close()
+                    else:
+                        o.flush()
                     obuf, oselo = [], []
-                    o.flush()
                 else:
                     obuf.pop(0)
 
@@ -1051,7 +1054,7 @@ def netcat(s, i, o):
             if s in out_r:
                 s.send(sbuf[0])
                 if len(sbuf) == 1:
-                    if not sbuf[0]: s.shutdown(socket.SHUT_WR)
+                    if len(sbuf[0]) == 0: s.shutdown(socket.SHUT_WR)
                     sbuf, osels = [], []
                 else:
                     sbuf.pop(0)
