@@ -46,7 +46,7 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import base64, errno, fcntl, os, socket, sys, select, struct, threading
+import base64, errno, os, socket, sys, select, struct, threading
 DEBUG = False
 #def DEBUG(foo): print foo
 
@@ -1005,20 +1005,8 @@ def wrapmodule(module):
 
 ## Netcat-like proxy-chaining tools follow ##
 
-def __unblock(f):
-    fd = f.fileno()
-    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
-def __block(f):
-    fd = f.fileno()
-    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, fl - os.O_NONBLOCK)
-
 def netcat(s, i, o):
     if hasattr(o, 'buffer'): o = o.buffer
-    __unblock(s)
-    __unblock(i)
     try:
         in_fileno = i.fileno()
         isel = [s, i]
@@ -1059,8 +1047,6 @@ def netcat(s, i, o):
                 else:
                     sbuf.pop(0)
 
-        __block(s)
-        __block(o)
         for data in sbuf: s.sendall(data)
         for data in obuf: o.write(data)
 
