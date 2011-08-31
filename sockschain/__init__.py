@@ -1017,15 +1017,15 @@ def netcat(s, i, o, keep_open=''):
         isel = [s, i]
         obuf, sbuf, oselo, osels = [], [], [], []
         while isel:
-            in_r, out_r, err_r = select.select(isel, oselo+osels, [], 1000)
+            in_r, out_r, err_r = select.select(isel, oselo+osels, isel, 1000)
 
+#           print 'In:%s Out:%s Err:%s' % (in_r, out_r, err_r)
             if s in in_r:
                 obuf.append(s.recv(4096))
+                oselo = [o]
                 if len(obuf[-1]) == 0:
                     if DEBUG: DEBUG('EOF(s, in)')
                     isel.remove(s)
-                else:
-                    oselo = [o]
 
             if o in out_r:
                 o.write(obuf[0])
@@ -1044,11 +1044,10 @@ def netcat(s, i, o, keep_open=''):
 
             if i in in_r:
                 sbuf.append(os.read(in_fileno, 4096))
+                osels = [s]
                 if len(sbuf[-1]) == 0:
                     if DEBUG: DEBUG('EOF(i)')
                     isel.remove(i)
-                else:
-                    osels = [s]
 
             if s in out_r:
                 s.send(sbuf[0])
