@@ -443,9 +443,11 @@ def usesystemdefaults():
 
 def sockcreateconn(*args, **kwargs):
     _thread_local().create_conn = args[0]
-    rv = _orgcreateconn(*args, **kwargs)
-    del(_thread_local().create_conn)
-    return rv
+    try:
+      rv = _orgcreateconn(*args, **kwargs)
+      return rv
+    finally:
+      del(_thread_local().create_conn)
 
 class socksocket(socket.socket):
     """socksocket([family[, type[, proto]]]) -> socket object
