@@ -210,7 +210,18 @@ except ImportError:
 
 
 def DisableSSLCompression():
-    # Hack to disable compression in OpenSSL and reduce memory usage *lots*.
+    # Why? Disabling compression in OpenSSL may reduce memory usage *lots*.
+
+    # If there is a sslzliboff module available, prefer that.
+    # See https://github.com/hausen/SSLZlibOff for working code.
+    try:
+        import sslzliboff
+        sslzliboff.disableZlib()
+        return
+    except:
+        pass
+
+    # Otherwise, fall through to the following hack.
     # Source:
     #   http://journal.paul.querna.org/articles/2011/04/05/openssl-memory-use/
     try:
