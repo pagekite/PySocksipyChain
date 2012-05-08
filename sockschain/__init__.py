@@ -204,6 +204,7 @@ except ImportError:
             # Mock to let our try/except clauses below not fail.
             class Error(Exception): pass
             class SysCallError(Exception): pass
+            class WantReadError(Exception): pass
             class WantWriteError(Exception): pass
             class ZeroReturnError(Exception): pass
 
