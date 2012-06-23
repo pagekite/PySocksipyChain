@@ -4,7 +4,7 @@ from setuptools import setup
 VERSION = "2.0.9"
 
 setup(
-    name = "python-SocksipyChain",
+    name = "SocksipyChain",
     version = VERSION,
     description = "A Python SOCKS/HTTP Proxy module",
     long_description = """\
