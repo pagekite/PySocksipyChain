@@ -469,7 +469,10 @@ class socksocket(socket.socket):
     """
 
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0):
-        self.__sock = _orgsocket(family, type, proto)
+        self.__family = family
+        self.__type = type
+        self.__proto = proto
+        self.__sock = None
         self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
@@ -918,6 +921,18 @@ class socksocket(socket.socket):
             route.pop(0)
         return route
 
+    def __do_connect(self, addrspec):
+      if ':' in addrspec[0]:
+        self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto)
+        return self.__sock.connect(addrspec)
+      else:
+        try:
+          self.__sock = _orgsocket(socket.AF_INET, self.__type, self.__proto)
+          return self.__sock.connect(addrspec)
+        except socket.gaierror:
+          self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto)
+          return self.__sock.connect(addrspec)
+
     def connect(self, destpair):
         """connect(self, despair)
         Connects to the specified destination through a chain of proxies.
@@ -966,7 +981,7 @@ class socksocket(socket.socket):
 
             if first and proxy[P_HOST]:
                 if DEBUG: DEBUG('*** Connect: %s:%s' % (proxy[P_HOST], portnum))
-                result = self.__sock.connect((proxy[P_HOST], portnum))
+                result = self.__do_connect((proxy[P_HOST], portnum))
 
             if chain:
                 nexthop = (chain[0][P_HOST] or '', int(chain[0][P_PORT] or 0))
@@ -1003,7 +1018,7 @@ class socksocket(socket.socket):
                 elif proxy[P_TYPE] == PROXY_TYPE_NONE:
                     if first and nexthop[0] and nexthop[1]:
                          if DEBUG: DEBUG('*** Connect: %s:%s' % nexthop)
-                         result = self.__sock.connect(nexthop)
+                         result = self.__do_connect(nexthop)
                     else:
                          raise GeneralProxyError((4, _generalerrors[4]))
 
