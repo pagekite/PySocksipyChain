@@ -367,7 +367,11 @@ _socks4errors = ("request granted",
 def parseproxy(arg):
     # This silly function will do a quick-and-dirty parse of our argument
     # into a proxy specification array. It lets people omit stuff.
-    args = arg.replace('/', '').split(':')
+    if '!' in arg:
+      # Prefer ! to :, because it works with IPv6 addresses.
+      args = arg.replace('/', '').split('!')
+    else:
+      args = arg.replace('/', '').split(':')
     args[0] = PROXY_TYPES[args[0] or 'http']
 
     if (len(args) in (3, 4, 5)) and ('@' in args[2]):
@@ -472,7 +476,7 @@ class socksocket(socket.socket):
         self.__family = family
         self.__type = type
         self.__proto = proto
-        self.__sock = None
+        self.__sock = _orgsocket(family, self.__type, self.__proto)
         self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
