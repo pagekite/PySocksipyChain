@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup
 
-VERSION = "2.0.9a"
+VERSION = "2.0.11"
 
 setup(
     name = "SocksipyChain",
