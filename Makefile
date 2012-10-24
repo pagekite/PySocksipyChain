@@ -34,8 +34,12 @@ VERSION=`python setup.py --version`
 	@rm ../python-socksipychain-*
 	@touch .deb
 
-.rpm: rpm_el4 rpm_el5 rpm_el6-fc13 rpm_fc14-15
+.rpm: rpm_el4 rpm_el5 rpm_el6-fc13 rpm_fc14-15 rpm_fc16-17
 	@touch .rpm
+
+rpm_fc16-17:
+	@./scripts/rpm-setup.sh 0pagekite_fc16fc17 /usr/lib/python2.7/site-packages
+	@make rpm
 
 rpm_fc14-15:
 	@./scripts/rpm-setup.sh 0pagekite_fc14fc15 /usr/lib/python2.7/site-packages
