@@ -369,9 +369,12 @@ def parseproxy(arg):
     # into a proxy specification array. It lets people omit stuff.
     if '!' in arg:
       # Prefer ! to :, because it works with IPv6 addresses.
-      args = arg.replace('/', '').split('!')
+      args = arg.split('!')
     else:
-      args = arg.replace('/', '').split(':')
+      # This is a bit messier to accept common URL syntax
+      if arg.endswith('/'):
+        arg = arg[:-1]
+      args = arg.replace('://', ':').replace('/:', ':').split(':')
     args[0] = PROXY_TYPES[args[0] or 'http']
 
     if (len(args) in (3, 4, 5)) and ('@' in args[2]):
