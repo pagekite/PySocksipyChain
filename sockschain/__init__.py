@@ -128,8 +128,6 @@ except ImportError:
         HAVE_SSL = True
 
         class SSL(object):
-            SSLv23_METHOD = ssl.PROTOCOL_SSLv23
-            SSLv3_METHOD = ssl.PROTOCOL_SSLv3
             TLSv1_METHOD = ssl.PROTOCOL_TLSv1
             WantReadError = ssl.SSLError
             class Error(Exception): pass
@@ -886,7 +884,7 @@ class socksocket(socket.socket):
         """__negotiatessl(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
-        ssl_version = SSL.SSLv3_METHOD
+        ssl_version = SSL.TLSv1_METHOD
         want_hosts = ca_certs = self_cert = None
         ciphers = self.__get_ca_ciphers()
         if anonymous:
