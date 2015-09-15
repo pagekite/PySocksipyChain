@@ -254,7 +254,7 @@ def MakeBestEffortSSLContext(weak=False, legacy=False, anonymous=False,
     if hasattr(SSL, 'OP_NO_SSLv2') and not weak:
         ssl_version = SSL.SSLv23_METHOD
         ssl_options |= SSL.OP_NO_SSLv2
-        if hasattr(SSL, 'OP_NO_SSLv3'):
+        if hasattr(SSL, 'OP_NO_SSLv3') and not legacy:
             ssl_options |= SSL.OP_NO_SSLv3
 
     if not ciphers:
