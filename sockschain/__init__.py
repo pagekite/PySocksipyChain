@@ -141,6 +141,7 @@ except ImportError:
                     self.certchain_file = None
                     self.ca_certs = None
                     self.ciphers = None
+                    self.options = 0
                 def use_privatekey_file(self, fn):
                     self.privatekey_file = fn
                 def use_certificate_chain_file(self, fn):
@@ -149,6 +150,11 @@ except ImportError:
                     self.ciphers = ciphers
                 def load_verify_locations(self, pemfile, capath=None):
                     self.ca_certs = pemfile
+                def set_options(self, options):  # FIXME: this does nothing
+                    self.options = options
+
+        if hasattr(ssl, 'PROTOCOL_SSLv23'):
+            SSL.SSLv23_METHOD = ssl.PROTOCOL_SSLv23
 
         def SSL_CheckPeerName(fd, names):
             cert = fd.getpeercert()
@@ -237,6 +243,31 @@ def DisableSSLCompression():
         openssl.sk_zero(openssl.SSL_COMP_get_compression_methods())
     except Exception:
         if DEBUG: DEBUG('disableSSLCompression: Failed')
+
+
+def MakeBestEffortSSLContext(weak=False, legacy=False, anonymous=False,
+                             ciphers=None):
+    ssl_version, ssl_options = SSL.TLSv1_METHOD, 0
+    if hasattr(SSL, 'SSLv23_METHOD') and (weak or legacy):
+        ssl_version = SSL.SSLv23_METHOD
+
+    if hasattr(SSL, 'OP_NO_SSLv2') and not weak:
+        ssl_version = SSL.SSLv23_METHOD
+        ssl_options |= SSL.OP_NO_SSLv2
+        if hasattr(SSL, 'OP_NO_SSLv3'):
+            ssl_options |= SSL.OP_NO_SSLv3
+
+    if not ciphers:
+        if anonymous:
+            # Insecure and use anon ciphers - this is just camoflage
+            ciphers = 'aNULL'
+        else:
+            ciphers = 'HIGH:-aNULL:-eNULL:-PSK:RC4-SHA:RC4-MD5'
+
+    ctx = SSL.Context(ssl_version)
+    ctx.set_options(ssl_options)
+    ctx.set_cipher_list(ciphers)
+    return ctx
 
 
 ##[ SocksiPy itself ]#########################################################
@@ -870,12 +901,6 @@ class socksocket(socket.socket):
         self.__proxysockname = ("0.0.0.0", 0)
         self.__proxypeername = (addr, destport)
 
-    def __get_ca_ciphers(self):
-        return 'HIGH:MEDIUM:!MD5'
-
-    def __get_ca_anon_ciphers(self):
-        return 'aNULL'
-
     def __get_ca_certs(self):
         return TLS_CA_CERTS
 
@@ -884,21 +909,15 @@ class socksocket(socket.socket):
         """__negotiatessl(self, destaddr, destport, proxy)
         Negotiates an SSL session.
         """
-        ssl_version = SSL.TLSv1_METHOD
         want_hosts = ca_certs = self_cert = None
-        ciphers = self.__get_ca_ciphers()
-        if anonymous:
-            # Insecure and use anon ciphers - this is just camoflage
-            ciphers = self.__get_ca_anon_ciphers()
-        elif not weak:
+        if not weak and not anonymous:
             # This is normal, secure mode.
             self_cert = proxy[P_USER] or None
             ca_certs  = proxy[P_CACERTS] or self.__get_ca_certs() or None
             want_hosts = proxy[P_CERTS] or [proxy[P_HOST]]
 
         try:
-            ctx = SSL.Context(ssl_version)
-            ctx.set_cipher_list(ciphers)
+            ctx = MakeBestEffortSSLContext(weak=weak, anonymous=anonymous)
             if self_cert:
                 ctx.use_certificate_chain_file(self_cert)
                 ctx.use_privatekey_file(self_cert)
