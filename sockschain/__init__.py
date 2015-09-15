@@ -2,7 +2,7 @@
 """SocksiPy - Python SOCKS module.
 Version 2.00
 
-Copyright 2011 Bjarni R. Einarsson. All rights reserved.
+Copyright 2011-2015 Bjarni R. Einarsson. All rights reserved.
 Copyright 2006 Dan-Haim. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,

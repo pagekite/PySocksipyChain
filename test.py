@@ -14,7 +14,7 @@ socks.setdefaultproxy(socks.PROXY_TYPE_HTTP, 'klaki.net', 18080)
 
 # Route an HTTP request through the SOCKS proxy 
 socks.wrapmodule(urllib2)
-print urllib2.urlopen('http://automation.whatismyip.com/n09230945.asp').read()
+print urllib2.urlopen('http://bot.whatismyipaddress.com/').read()
 
 # Route an FTP session through the SOCKS proxy 
 #socks.wrapmodule(ftplib)
