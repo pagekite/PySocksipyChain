@@ -6,7 +6,7 @@
 #    - Source and binary (noarch) .rpm for: RHEL 4/5/6, Fedora 13/14/15
 #    - Binary (all) .deb
 #
-dist: .rpm .targz
+dist: .deb .rpm .targz
 	@echo ======= BUILD OK =====================
 	@ls -l dist/
 
