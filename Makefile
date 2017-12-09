@@ -69,5 +69,5 @@ clean:
 	@rm -rf debian/changelog
 
 distclean: clean
-	@rm -rf dist
+	@rm -rf dist/*
 
