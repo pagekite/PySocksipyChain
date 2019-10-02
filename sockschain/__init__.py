@@ -565,11 +565,14 @@ class socksocket(socket.socket):
 
     def makefile(self, mode='r', bufsize=-1):
         self.__makefile_refs += 1
-        try:
-            return socket._fileobject(self, mode, bufsize, close=True)
-        except TypeError:
-            # Python 2.2 compatibility hacks.
-            return socket._fileobject(self, mode, bufsize)
+        if six.PY2:
+            try:
+                return socket._fileobject(self, mode, bufsize, close=True)
+            except TypeError:
+                # Python 2.2 compatibility hacks.
+                return socket._fileobject(self, mode, bufsize)
+        else:
+            return socket.SocketIO(self, mode)
 
     def addproxy(self, proxytype=None, addr=None, port=None, rdns=True, username=None, password=None, certnames=None):
         """setproxy(proxytype, addr[, port[, rdns[, username[, password[, certnames]]]]])
