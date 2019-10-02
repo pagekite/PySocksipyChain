@@ -46,7 +46,7 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import base64, errno, os, socket, sys, select, struct, threading
+import base64, errno, os, socket, sys, select, struct, threading, six
 DEBUG = False
 #def DEBUG(foo): print foo
 
@@ -659,7 +659,7 @@ class socksocket(socket.socket):
                 # Resolve remotely
                 ipaddr = None
                 req = req + (chr(0x03).encode() +
-                             chr(len(destaddr)).encode() + destaddr)
+                             chr(len(destaddr)).encode() + six.b(destaddr))
             else:
                 # Resolve locally
                 ipaddr = socket.inet_aton(socket.gethostbyname(destaddr))
