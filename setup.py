@@ -7,6 +7,7 @@ setup(
     name = "SocksipyChain",
     version = VERSION,
     description = "A Python SOCKS/HTTP Proxy module",
+    install_requires=["six"],
     long_description = """\
 This Python module allows you to create TCP connections through a chain
 of SOCKS or HTTP proxies without any special effort. It also supports

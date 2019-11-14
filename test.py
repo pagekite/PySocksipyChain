@@ -1,11 +1,18 @@
 #!/usr/bin/python
+from __future__ import print_function
+from six.moves.urllib.request import urlopen
+
 import ftplib
 import telnetlib
-import urllib2
+
+try:
+    import urllib.request as urllib_request  # Python 3
+except ImportError:
+    import urllib2 as urllib_request  # Python 2
 
 # Import SocksiPy
 import sockschain as socks
-def DEBUG(msg): print msg
+def DEBUG(msg): print(msg)
 socks.DEBUG = DEBUG
 
 # Set the proxy information
@@ -13,8 +20,8 @@ socks.DEBUG = DEBUG
 socks.setdefaultproxy(socks.PROXY_TYPE_HTTP, 'klaki.net', 18080)
 
 # Route an HTTP request through the SOCKS proxy 
-socks.wrapmodule(urllib2)
-print urllib2.urlopen('http://bot.whatismyipaddress.com/').read()
+socks.wrapmodule(urllib_request)
+print(urlopen('http://bot.whatismyipaddress.com/').read())
 
 # Route an FTP session through the SOCKS proxy 
 #socks.wrapmodule(ftplib)
@@ -26,5 +33,5 @@ print urllib2.urlopen('http://bot.whatismyipaddress.com/').read()
 # Route a telnet connection through the SOCKS proxy
 socks.wrapmodule(telnetlib)
 tn = telnetlib.Telnet('achaea.com')
-print tn.read_very_eager()
+print(tn.read_very_eager())
 tn.close()
