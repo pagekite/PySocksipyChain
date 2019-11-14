@@ -1,8 +1,8 @@
 #!/usr/bin/python
 """SocksiPy - Python SOCKS module.
-Version 2.00
+Version 2.1
 
-Copyright 2011-2015 Bjarni R. Einarsson. All rights reserved.
+Copyright 2011-2019 Bjarni R. Einarsson. All rights reserved.
 Copyright 2006 Dan-Haim. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -53,16 +53,11 @@ DEBUG = False
 
 ##[ SSL compatibility code ]##################################################
 
-try:
-  import hashlib
-  def sha1hex(data):
-    hl = hashlib.sha1()
-    hl.update(data)
-    return hl.hexdigest().lower()
-except ImportError:
-  import sha
-  def sha1hex(data):
-    return sha.new(data).hexdigest().lower()
+import hashlib
+def sha1hex(data):
+  hl = hashlib.sha1()
+  hl.update(data)
+  return hl.hexdigest().lower()
 
 
 def SSL_CheckName(commonName, digest, valid_names):
@@ -341,18 +336,7 @@ DEFAULT_ROUTE = '*'
 _proxyroutes = { }
 _orgsocket = socket.socket
 _orgcreateconn = getattr(socket, 'create_connection', None)
-try:
-  _thread_locals = threading.local()
-  def _thread_local(): return _thread_locals
-
-except AttributeError:
-  # Pre 2.4, we have to implement our own.
-  _thread_local_dict = {}
-  class Storage(object): pass
-  def _thread_local():
-    tid = str(threading.currentThread())
-    if not tid in _thread_local_dict: _thread_local_dict[tid] = Storage()
-    return _thread_local_dict[tid]
+_thread_locals = threading.local()
 
 
 class ProxyError(Exception): pass
@@ -490,12 +474,12 @@ def usesystemdefaults():
             return
 
 def sockcreateconn(*args, **kwargs):
-    _thread_local().create_conn = args[0]
+    _thread_locals.create_conn = args[0]
     try:
       rv = _orgcreateconn(*args, **kwargs)
       return rv
     finally:
-      del(_thread_local().create_conn)
+      del(_thread_locals.create_conn)
 
 class socksocket(socket.socket):
     """socksocket([family[, type[, proto]]]) -> socket object
@@ -566,11 +550,7 @@ class socksocket(socket.socket):
     def makefile(self, mode='r', bufsize=-1):
         self.__makefile_refs += 1
         if six.PY2:
-            try:
-                return socket._fileobject(self, mode, bufsize, close=True)
-            except TypeError:
-                # Python 2.2 compatibility hacks.
-                return socket._fileobject(self, mode, bufsize)
+            return socket._fileobject(self, mode, bufsize, close=True)
         else:
             return socket.SocketIO(self, mode)
 
@@ -968,7 +948,7 @@ class socksocket(socket.socket):
         To select the proxy servers use setproxy() and chainproxy().
         """
         if DEBUG: DEBUG('*** Connect: %s / %s' % (destpair, self.__proxy))
-        destpair = getattr(_thread_local(), 'create_conn', destpair)
+        destpair = getattr(_thread_locals, 'create_conn', destpair)
 
         # Do a minimal input check first
         if ((not type(destpair) in (list, tuple)) or
@@ -1176,9 +1156,9 @@ def Main():
         chain = __make_proxy_chain(args)
     except:
         DebugPrint('Error: %s' % (sys.exc_info(), ))
-        sys.stderr.write(('Usage: %s '
+        sys.stderr.write(('Usage: python -m sockschain '
                           '[<proto:proxy:port> [<proto:proxy:port> ...]] '
-                          '<host:port>\n') % os.path.basename(sys.argv[0]))
+                          '<host:port>\n'))
         sys.exit(1)
 
     try:

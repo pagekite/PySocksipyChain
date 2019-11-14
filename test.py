@@ -16,22 +16,14 @@ def DEBUG(msg): print(msg)
 socks.DEBUG = DEBUG
 
 # Set the proxy information
-#socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, 'localhost', 9050)
-socks.setdefaultproxy(socks.PROXY_TYPE_HTTP, 'klaki.net', 18080)
+socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, 'localhost', 9050)
 
 # Route an HTTP request through the SOCKS proxy 
 socks.wrapmodule(urllib_request)
-print(urlopen('http://bot.whatismyipaddress.com/').read())
-
-# Route an FTP session through the SOCKS proxy 
-#socks.wrapmodule(ftplib)
-#ftp = ftplib.FTP('cdimage.ubuntu.com')
-#ftp.login('anonymous', 'support@aol.com')
-#print ftp.dir('cdimage')
-#ftp.close()
+print('\n%s\n' % urlopen('http://bot.whatismyipaddress.com/').read())
 
 # Route a telnet connection through the SOCKS proxy
 socks.wrapmodule(telnetlib)
-tn = telnetlib.Telnet('achaea.com')
-print(tn.read_very_eager())
+tn = telnetlib.Telnet('india.colorado.edu', 13)
+print(tn.read_all())
 tn.close()

@@ -4,15 +4,15 @@ Priority: optional
 Maintainer: PageKite Packaging Team <packages@pagekite.net>
 Build-Depends:  cdbs (>= 0.4.52),
                 debhelper (>= 7.0.15~),
-                python (>= 2.4)
-XS-Python-Version: >= 2.3
+                python (>= 2.7)
+XS-Python-Version: >= 2.7
 Standards-Version: 3.9.1
 Homepage: http://pagekite.net/wiki/Floss/PySocksipyChain/
 
 Package: python-socksipychain
 Section: python
 Architecture: all
-Depends: ${misc:Depends}, python (>= 2.3)
+Depends: ${misc:Depends}, python (>= 2.7)
 Description: Python SOCKS/HTTP/SSL chaining proxy module
  This Python module allows you to create TCP connections through a chain
  of SOCKS or HTTP proxies without any special effort. It also supports
