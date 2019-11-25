@@ -61,6 +61,11 @@ def sha1hex(data):
 
 
 def SSL_CheckName(commonName, digest, valid_names):
+    try:
+      digest = str(digest, 'iso-8859-1')
+    except TypeError:
+      pass
+    digest = digest.replace(':', '')
     pairs = [(commonName, '%s/%s' % (commonName, digest))]
     valid = 0
 
@@ -99,7 +104,7 @@ try:
                 if errno != 0: return False
                 if depth != 0: return True
                 return (SSL_CheckName(x509.get_subject().commonName.lower(),
-                                      x509.digest('sha1').replace(':',''),
+                                      x509.digest('sha1'),
                                       verify_names) > 0)
             ctx.set_verify(SSL.VERIFY_PEER |
                            SSL.VERIFY_FAIL_IF_NO_PEER_CERT, vcb)
