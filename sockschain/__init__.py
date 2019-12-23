@@ -89,6 +89,8 @@ HAVE_SSL = False
 HAVE_PYOPENSSL = False
 TLS_CA_CERTS = "/etc/ssl/certs/ca-certificates.crt"
 try:
+    if sys.version_info >= (3, ):
+        raise ImportError('pyOpenSSL disabled (Python 3)')
     if '--nopyopenssl' in sys.argv or '--nossl' in sys.argv:
         raise ImportError('pyOpenSSL disabled')
 
@@ -507,7 +509,7 @@ class socksocket(socket.socket):
         self.__override = ['addproxy', 'setproxy',
                            'getproxysockname', 'getproxypeername',
                            'close', 'connect', 'getpeername', 'makefile',
-                           'recv'] #, 'send', 'sendall']
+                           'recv', 'recv_into'] #, 'send', 'sendall']
 
     def __getattribute__(self, name):
         if name.startswith('_socksocket__'):
@@ -782,6 +784,22 @@ class socksocket(socket.socket):
             except SSL.WantReadError:
                 pass
 
+    def recv_into(self, buf, nbytes=0, flags=0):
+        if self.__negotiating:
+            # If the calling code tries to read before negotiating is done,
+            # assume this is not HTTP, bail and attempt HTTP CONNECT.
+            if DEBUG: DEBUG("*** Not HTTP, failing back to HTTP CONNECT.")
+            buf, host, port, proxy = self.__stop_http_negotiation()
+            self.__negotiatehttpconnect(host, port, proxy)
+            self.__sock.sendall(buf)
+        while True:
+            try:
+                return self.__sock.recv_into(buf, nbytes, flags)
+            except SSL.SysCallError:
+                return 0
+            except SSL.WantReadError:
+                pass
+
     def send(self, *args, **kwargs):
         if self.__negotiating:
             self.__buffer += args[0]
@@ -1047,6 +1065,7 @@ def wrapmodule(module):
     """
     module.socket.socket = socksocket
     module.socket.create_connection = sockcreateconn
+    if DEBUG: DEBUG('Wrapped: %s' % module.__name__)
 
 
 ## Netcat-like proxy-chaining tools follow ##
