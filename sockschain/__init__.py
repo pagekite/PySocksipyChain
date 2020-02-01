@@ -768,7 +768,7 @@ class socksocket(socket.socket):
         self.__override.remove('sendall')
         return (buf, host, port, proxy)
 
-    def recv(self, count):
+    def recv(self, count, flags=0):
         if self.__negotiating:
             # If the calling code tries to read before negotiating is done,
             # assume this is not HTTP, bail and attempt HTTP CONNECT.
@@ -778,7 +778,7 @@ class socksocket(socket.socket):
             self.__sock.sendall(buf)
         while True:
             try:
-                return self.__sock.recv(count)
+                return self.__sock.recv(count, flags)
             except SSL.SysCallError:
                 return ''
             except SSL.WantReadError:
