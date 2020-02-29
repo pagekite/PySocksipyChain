@@ -495,11 +495,15 @@ class socksocket(socket.socket):
     you must specify family=AF_INET, type=SOCK_STREAM and proto=0.
     """
 
-    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0):
+    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0,
+                 *args, **kwargs):
         self.__family = family
         self.__type = type
         self.__proto = proto
-        self.__sock = _orgsocket(family, self.__type, self.__proto)
+        self.__args = args
+        self.__kwargs = kwargs
+        self.__sock = _orgsocket(family, self.__type, self.__proto,
+                                 *self.__args, **self.__kwargs)
         self.__proxy = None
         self.__proxysockname = None
         self.__proxypeername = None
@@ -768,7 +772,7 @@ class socksocket(socket.socket):
         self.__override.remove('sendall')
         return (buf, host, port, proxy)
 
-    def recv(self, count):
+    def recv(self, count, flags=0):
         if self.__negotiating:
             # If the calling code tries to read before negotiating is done,
             # assume this is not HTTP, bail and attempt HTTP CONNECT.
@@ -778,7 +782,7 @@ class socksocket(socket.socket):
             self.__sock.sendall(buf)
         while True:
             try:
-                return self.__sock.recv(count)
+                return self.__sock.recv(count, flags)
             except SSL.SysCallError:
                 return ''
             except SSL.WantReadError:
@@ -953,14 +957,17 @@ class socksocket(socket.socket):
 
     def __do_connect(self, addrspec):
       if ':' in addrspec[0]:
-        self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto)
+        self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto,
+                                 *self.__args, **self.__kwargs)
         return self.__sock.connect(addrspec)
       else:
         try:
-          self.__sock = _orgsocket(socket.AF_INET, self.__type, self.__proto)
+          self.__sock = _orgsocket(socket.AF_INET, self.__type, self.__proto,
+                                   *self.__args, **self.__kwargs)
           return self.__sock.connect(addrspec)
         except socket.gaierror:
-          self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto)
+          self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto,
+                                   *self.__args, **self.__kwargs)
           return self.__sock.connect(addrspec)
 
     def connect(self, destpair):
