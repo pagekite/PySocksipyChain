@@ -157,6 +157,14 @@ except ImportError:
 
         if hasattr(ssl, 'PROTOCOL_SSLv23'):
             SSL.SSLv23_METHOD = ssl.PROTOCOL_SSLv23
+        if hasattr(ssl, 'OP_NO_SSLv2'):
+            SSL.OP_NO_SSLv2 = ssl.OP_NO_SSLv2
+        if hasattr(ssl, 'OP_NO_SSLv3'):
+            SSL.OP_NO_SSLv3 = ssl.OP_NO_SSLv3
+        if hasattr(ssl, 'OP_NO_COMPRESSION'):
+            SSL.OP_NO_COMPRESSION = ssl.OP_NO_COMPRESSION
+        if hasattr(ssl, 'PROTOCOL_TLS'):
+            SSL.TLS_METHOD = ssl.PROTOCOL_TLS
 
         def SSL_CheckPeerName(fd, names):
             cert = fd.getpeercert()
@@ -171,8 +179,8 @@ except ImportError:
                 for field in cert['subjectAltName']:
                     if field[0].lower() == 'dns':
                         name = field[1].lower()
-                        valid += SSL_CheckName(field[1].lower(),
-                                               certhash, names)
+                        valid += SSL_CheckName(name, certhash, names)
+
             return (valid > 0)
 
         def SSL_Connect(ctx, sock,
@@ -256,8 +264,14 @@ def MakeBestEffortSSLContext(weak=False, legacy=False, anonymous=False,
     if hasattr(SSL, 'OP_NO_SSLv2') and not weak:
         ssl_version = SSL.SSLv23_METHOD
         ssl_options |= SSL.OP_NO_SSLv2
-        if hasattr(SSL, 'OP_NO_SSLv3') and not legacy:
-            ssl_options |= SSL.OP_NO_SSLv3
+    if hasattr(SSL, 'OP_NO_SSLv3') and not (weak or legacy):
+        ssl_version = SSL.SSLv23_METHOD
+        ssl_options |= SSL.OP_NO_SSLv3
+    if hasattr(SSL, 'TLS_METHOD') and not (weak or legacy):
+        ssl_version = SSL.TLS_METHOD
+
+    if hasattr(SSL, 'OP_NO_COMPRESSION'):
+        ssl_options |= SSL.OP_NO_COMPRESSION
 
     if not ciphers:
         if anonymous:
@@ -266,6 +280,8 @@ def MakeBestEffortSSLContext(weak=False, legacy=False, anonymous=False,
         else:
             ciphers = 'HIGH:-aNULL:-eNULL:-PSK:RC4-SHA:RC4-MD5'
 
+    if DEBUG: DEBUG('*** Context: ssl_version=%x, ssl_options=%x, ciphers=%s'
+                    % (ssl_version, ssl_options, ciphers))
     ctx = SSL.Context(ssl_version)
     ctx.set_options(ssl_options)
     ctx.set_cipher_list(ciphers)
