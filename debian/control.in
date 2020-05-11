@@ -12,7 +12,7 @@ Homepage: http://pagekite.net/wiki/Floss/PySocksipyChain/
 Package: python-socksipychain
 Section: python
 Architecture: all
-Depends: ${misc:Depends}, python (>= 2.7), python-six
+Depends: ${misc:Depends}, python (>= 2.7)
 Description: Python SOCKS/HTTP/SSL chaining proxy module
  This Python module allows you to create TCP connections through a chain
  of SOCKS or HTTP proxies without any special effort. It also supports

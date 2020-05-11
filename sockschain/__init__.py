@@ -46,7 +46,14 @@ mainly to merge bug fixes found in Sourceforge
 
 """
 
-import base64, errno, os, socket, sys, select, struct, threading, six
+import base64, errno, os, socket, sys, select, struct, threading
+
+PY2 = ((2, 0) < sys.version_info < (3, 0))
+if PY2:
+    b = lambda s: s
+else:
+    b = lambda s: s.encode('latin-1')
+
 DEBUG = False
 #def DEBUG(foo): print foo
 
@@ -576,7 +583,7 @@ class socksocket(socket.socket):
 
     def makefile(self, mode='r', bufsize=-1):
         self.__makefile_refs += 1
-        if six.PY2:
+        if PY2:
             return socket._fileobject(self, mode, bufsize, close=True)
         else:
             return socket.SocketIO(self, mode)
@@ -669,7 +676,7 @@ class socksocket(socket.socket):
                 # Resolve remotely
                 ipaddr = None
                 req = req + (chr(0x03).encode() +
-                             chr(len(destaddr)).encode() + six.b(destaddr))
+                             chr(len(destaddr)).encode() + b(destaddr))
             else:
                 # Resolve locally
                 ipaddr = socket.inet_aton(socket.gethostbyname(destaddr))
