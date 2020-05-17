@@ -55,6 +55,7 @@ else:
     b = lambda s: s.encode('latin-1')
 
 DEBUG = False
+DEFAULT_TIMEOUT = 30
 #def DEBUG(foo): print foo
 
 
@@ -554,6 +555,13 @@ class socksocket(socket.socket):
           return setattr(object.__getattribute__(self, "_socksocket__sock"),
                          name, value)
 
+    def __settimeout(self, timeout):
+        try:
+            self.__sock.settimeout(timeout)
+        except:
+            # Python 2.2 compatibility hacks.
+            pass
+
     def __recvall(self, count):
         """__recvall(count) -> data
         Receive EXACTLY the number of bytes requested from the socket.
@@ -561,11 +569,7 @@ class socksocket(socket.socket):
         timeout occurs.
         """
         self.__sock.setblocking(1)
-        try:
-            self.__sock.settimeout(20)
-        except:
-            # Python 2.2 compatibility hacks.
-            pass
+        self.__settimeout(DEFAULT_TIMEOUT)
 
         data = self.recv(count)
         while len(data) < count:
@@ -982,15 +986,18 @@ class socksocket(socket.socket):
       if ':' in addrspec[0]:
         self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto,
                                  *self.__args, **self.__kwargs)
+        self.__settimeout(DEFAULT_TIMEOUT)
         return self.__sock.connect(addrspec)
       else:
         try:
           self.__sock = _orgsocket(socket.AF_INET, self.__type, self.__proto,
                                    *self.__args, **self.__kwargs)
+          self.__settimeout(DEFAULT_TIMEOUT)
           return self.__sock.connect(addrspec)
         except socket.gaierror:
           self.__sock = _orgsocket(socket.AF_INET6, self.__type, self.__proto,
                                    *self.__args, **self.__kwargs)
+          self.__settimeout(DEFAULT_TIMEOUT)
           return self.__sock.connect(addrspec)
 
     def connect(self, destpair):
