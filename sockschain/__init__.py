@@ -648,8 +648,8 @@ class socksocket(socket.socket):
             # Okay, we need to perform a basic username/password
             # authentication.
             self.sendall(chr(0x01).encode() +
-                         chr(len(proxy[P_USER])) + proxy[P_USER] +
-                         chr(len(proxy[P_PASS])) + proxy[P_PASS])
+                         chr(len(proxy[P_USER])).encode() + proxy[P_USER].encode() +
+                         chr(len(proxy[P_PASS])).encode() + proxy[P_PASS].encode())
             authstat = self.__recvall(2)
             if authstat[0:1] != chr(0x01).encode():
                 # Bad response
