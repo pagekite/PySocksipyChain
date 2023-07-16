@@ -56,7 +56,7 @@ else:
 
 DEBUG = False
 DEFAULT_TIMEOUT = 30
-#def DEBUG(foo): print foo
+#def DEBUG(foo): sys.stderr.write(foo + '\n')
 
 
 ##[ SSL compatibility code ]##################################################
@@ -113,6 +113,7 @@ try:
             def vcb(conn, x509, errno, depth, rc):
                 if errno != 0: return False
                 if depth != 0: return True
+                if DEBUG: DEBUG('Check: %s' % x509.get_subject().commonName.lower())
                 return (SSL_CheckName(x509.get_subject().commonName.lower(),
                                       x509.digest('sha1'),
                                       verify_names) > 0)
@@ -1100,6 +1101,8 @@ def wrapmodule(module):
     This will only work on modules that import socket directly into the
     namespace; most of the Python Standard Library falls into this category.
     """
+    if not hasattr(module, 'socket'):
+      module.socket = socket
     module.socket.socket = socksocket
     module.socket.create_connection = sockcreateconn
     if DEBUG: DEBUG('Wrapped: %s' % module.__name__)

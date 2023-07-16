@@ -2,7 +2,6 @@
 from __future__ import print_function
 from six.moves.urllib.request import urlopen
 
-import ftplib
 import telnetlib
 
 try:
@@ -20,7 +19,7 @@ socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, 'localhost', 9050)
 
 # Route an HTTP request through the SOCKS proxy 
 socks.wrapmodule(urllib_request)
-print('\n%s\n' % urlopen('http://bot.whatismyipaddress.com/').read())
+print('\n%s\n' % urlopen('https://ipconfig.me/').read())
 
 # Route a telnet connection through the SOCKS proxy
 socks.wrapmodule(telnetlib)
