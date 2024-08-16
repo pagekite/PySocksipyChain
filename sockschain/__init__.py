@@ -196,23 +196,25 @@ except ImportError:
                         verify_names=None):
             if DEBUG: DEBUG('*** TLS is provided by native Python ssl')
             reqs = (verify_names and ssl.CERT_REQUIRED or ssl.CERT_NONE)
+
+            context = ssl.SSLContext(protocol=ctx.method)
+            context.verify_mode = reqs
+            # context.check_hostname is not set to True as there is a custom
+            # implementation for checking hostnames below.
+            context.load_verify_locations(cafile=ctx.ca_certs)
+            if ctx.certchain_file:
+                context.load_cert_chain(certfile=ctx.certchain_file,
+                                        keyfile=ctx.privatekey_file)
+
             try:
-                fd = ssl.wrap_socket(sock, keyfile=ctx.privatekey_file,
-                                           certfile=ctx.certchain_file,
-                                           cert_reqs=reqs,
-                                           ca_certs=ctx.ca_certs,
-                                           do_handshake_on_connect=False,
-                                           ssl_version=ctx.method,
-                                           ciphers=ctx.ciphers,
-                                           server_side=server_side)
-            except:
-                fd = ssl.wrap_socket(sock, keyfile=ctx.privatekey_file,
-                                           certfile=ctx.certchain_file,
-                                           cert_reqs=reqs,
-                                           ca_certs=ctx.ca_certs,
-                                           do_handshake_on_connect=False,
-                                           ssl_version=ctx.method,
-                                           server_side=server_side)
+                if ctx.ciphers:
+                    context.set_ciphers(ctx.ciphers)
+            except ssl.SSLError:
+                if DEBUG: DEBUG('No cipher could be selected')
+
+            fd = context.wrap_socket(sock,
+                                     do_handshake_on_connect=False,
+                                     server_side=server_side)
 
             if verify_names:
                 fd.do_handshake()
