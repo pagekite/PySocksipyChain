@@ -445,7 +445,7 @@ def parseproxy(arg):
       args[P_HOST] = names[0]
       while len(args) <= P_CERTS:
         args.append((len(args) == P_RDNS) and True or None)
-      args[P_CERTS] = (len(names) > 1) and names[1:] or names
+      args[P_CERTS] = names
 
     return args
 
