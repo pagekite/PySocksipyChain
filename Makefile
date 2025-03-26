@@ -3,10 +3,9 @@
 # the following packages:
 #
 #    - Source .tar.gz distribution
-#    - Source and binary (noarch) .rpm for: RHEL 4/5/6, Fedora 13/14/15
 #    - Binary (all) .deb
 #
-dist: .deb .rpm .targz
+dist: .deb .targz
 	@echo ======= BUILD OK =====================
 	@ls -l dist/
 
@@ -34,37 +33,8 @@ VERSION=`python setup.py --version`
 	@rm ../python-socksipychain-*
 	@touch .deb
 
-.rpm: rpm_el4 rpm_el5 rpm_el6-fc13 rpm_fc14-15 rpm_fc16-17
-	@touch .rpm
-
-rpm_fc16-17:
-	@./scripts/rpm-setup.sh 0pagekite_fc16fc17 /usr/lib/python2.7/site-packages
-	@make rpm
-
-rpm_fc14-15:
-	@./scripts/rpm-setup.sh 0pagekite_fc14fc15 /usr/lib/python2.7/site-packages
-	@make rpm
-
-rpm_el4:
-	@./scripts/rpm-setup.sh 0pagekite_el4 /usr/lib/python2.3/site-packages
-	@make rpm
-
-rpm_el5:
-	@./scripts/rpm-setup.sh 0pagekite_el5 /usr/lib/python2.4/site-packages
-	@make rpm
-
-rpm_el6-fc13:
-	@./scripts/rpm-setup.sh 0pagekite_el6fc13 /usr/lib/python2.6/site-packages
-	@make rpm
-
-rpm: setup.py sockschain/__init__.py Makefile
-	@echo ======= .RPM =====================
-	@sed -i -e 's/"Socks/"python-Socks/g' setup.py
-	@python setup.py bdist_rpm --install scripts/rpm-install.sh
-	@sed -i -e 's/"python-Socks/"Socks/g' setup.py
-
 clean:
-	@rm -rf .rpm .targz .deb build MANIFEST *.egg-info setup.cfg
+	@rm -rf .targz .deb build MANIFEST *.egg-info setup.cfg
 	@rm -rf debian/files debian/control debian/copyright debian/python-*
 	@rm -rf debian/changelog
 
