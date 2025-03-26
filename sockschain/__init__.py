@@ -202,7 +202,8 @@ except ImportError:
             context.verify_mode = reqs
             # context.check_hostname is not set to True as there is a custom
             # implementation for checking hostnames below.
-            context.load_verify_locations(cafile=ctx.ca_certs)
+            if ctx.ca_certs:
+                context.load_verify_locations(cafile=ctx.ca_certs)
             if ctx.certchain_file:
                 context.load_cert_chain(certfile=ctx.certchain_file,
                                         keyfile=ctx.privatekey_file)
