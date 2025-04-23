@@ -1,9 +1,13 @@
 #!/usr/bin/make -f
 
-DEB_PYTHON_SYSTEM = pysupport
+%:
+	dh $@ --with python2,python3 --buildsystem=pybuild
+
+override_dh_auto_install:
+	python setup.py install --root=$(CURDIR)/debian/python-socksipychain --install-layout=deb
+	python3 setup.py install --root=$(CURDIR)/debian/python3-socksipychain --install-layout=deb
+	rm -rf $(CURDIR)/debian/python3-socksipychain/usr/bin
 
 # This keeps backwards compatibility with older Debians
-DEB_DH_BUILDDEB_ARGS = -- -Zgzip
-
-include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/class/python-distutils.mk
+override_dh_builddeb:
+	dh_builddeb -- -Zgzip

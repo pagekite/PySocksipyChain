@@ -29,8 +29,8 @@ VERSION=`python setup.py --version`
 	     -e "s/@DATE@/`date -R`/g" \
 		< debian/changelog.in >debian/changelog
 	@debuild -i -us -uc -b
-	@mv ../python-socksipychain_*.deb dist/
-	@rm ../python-socksipychain-*
+	@mv ../python*-socksipychain_*.deb dist/
+	@rm ../python*-socksipychain-*
 	@touch .deb
 
 clean:
